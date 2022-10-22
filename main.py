@@ -3,6 +3,8 @@ import random
 import matplotlib.pyplot as plt
 import time
 from collections import deque
+from collections import defaultdict
+import heapq as heap
 
 NODE_RADIUS = 5
 
@@ -229,8 +231,9 @@ def new_node(to_vertex, from_vertex, max_length):
 def RRT(G, iter_num, map, step_length, bias=.0):
     """ RRT algorithm """
     obstacles = map.obstacles_c
-    goal_node = None
-    for _ in range(iter_num):
+    # goal_node = None
+    iter = 0
+    while(iter < iter_num):
         q_rand = G.random_node(bias=bias)                                    # generate a new random node
         if map.is_occupied_c(q_rand):                               # if new node's position is in an obstacle
             continue
@@ -249,52 +252,84 @@ def RRT(G, iter_num, map, step_length, bias=.0):
             G.add_vertex(G.goal)
             G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
             print("********PATH FOUND**********")
-            dijkstra(G, q_new)
+            dijkstra2(G, q_new)
+            break
+
+        iter += 1
+
+    return iter
 
 
 def RRT_star(G, iter_num, map, step_length, radius, bias=.0):
     """ RRT star algorithm """
     obstacles = map.obstacles_c
-    goal_node = None
-    for _ in range(iter_num):
-        q_rand = G.random_node(bias=bias)
-        if map.is_occupied_c(q_rand):
+    # goal_node = None
+    best_edge = None
+    iter = 0
+    while iter < iter_num:
+        q_rand = G.random_node(bias=bias)   # generate random node
+        if map.is_occupied_c(q_rand):       # if it's generated on an obstacle, continue
             continue
-        q_near, id_near = nearest_node(G, q_rand, obstacles)
+        q_near, id_near = nearest_node(G, q_rand, obstacles)    # find the nearest to the random node; change function to also include radius?
         if q_near is None:
             continue
-        q_new = new_node(q_rand, q_near, step_length)
-        id_new = G.add_vertex(q_new)
-        cost_new_near = calc_distance(q_new, q_near)    # find cost from q_new to q_near
-        G.add_edge(id_new, id_near, cost_new_near)
-        G.cost[id_new] = G.cost[id_near] + cost_new_near
-        for vertex in G.vertices:
-            if calc_distance(vertex, q_new) > radius:
+        q_new = new_node(q_rand, q_near, step_length)       # create the new node
+        id_new = G.add_vertex(q_new)                        # get id of the new node
+        cost_new_near = calc_distance(q_new, q_near)        # find cost from q_new to q_near
+        best_edge = (id_new, id_near, cost_new_near)
+        #G.add_edge(id_new, id_near, cost_new_near)          # add edge between new and nearest nodes
+        G.cost[id_new] = G.cost[id_near] + cost_new_near    # calculate cost for new node from nearest node
+        # print(id_new)
+        # plot_graph(G, map.obstacles_c)
+        # plt.show()
+
+        for vertex in G.vertices:                           # iterate through all the vertices
+            id_ver = G.id_vertex[vertex]                     # get the id of the vertex
+            if id_ver == id_new:
                 continue
-            id_vertex = G.id_vertex[vertex]
-            if G.cost[id_new] + calc_distance(q_new, vertex) < G.cost[id_vertex]:
-                G.cost[id_vertex] = G.cost[id_new] + calc_distance(q_new, vertex)
+            distance_new_vert = calc_distance(q_new, vertex)    # calculate distance between new node and vertex node
+            if distance_new_vert > radius:                      # if distance is greater than search radius - continue
+                continue
+            line = Line(vertex, q_new)                          # create Line object from new node to vertex
+            if through_obstacle(line, obstacles):               # if the line goes through obstacle - continue
+                continue
+            if G.cost[id_new] > G.cost[id_ver] + distance_new_vert:  # if cost from new node to vertex is smaller
+                # ids = G.edges.index()
+                G.cost[id_new] = G.cost[id_ver] + distance_new_vert  # than current cost, rewire the vertex to new
+                best_edge = (id_new, id_ver, distance_new_vert)
+                #G.add_edge(id_new, id_vertex, distance_new_vert)        # node
+
+        G.add_edge(*best_edge)
+
+        # rewire
+        for vertex in G.vertices:  # iterate through all the vertices
+            id_ver = G.id_vertex[vertex]  # get the id of the vertex
+            if id_ver == id_new:
+                continue
+            distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
+            if distance_new_vert > radius:  # if distance is greater than search radius - continue
+                continue
+            line = Line(vertex, q_new)  # create Line object from new node to vertex
+            if through_obstacle(line, obstacles):  # if the line goes through obstacle - continue
+                continue
+            if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:  # if cost from new node to vertex is smaller
+                G.cost[id_ver] = G.cost[id_new] + distance_new_vert
+                G.edges[id_ver-1] = (id_ver, id_new)
+
+        dist_to_goal = calc_distance(q_new, G.goal)                     # check if the goal has been reached
+        if dist_to_goal < 2 * NODE_RADIUS:
+            G.add_vertex(G.goal)
+            G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
+            print("********PATH FOUND**********")
+            dijkstra2(G, q_new)
+            break       # it should absolutely not stop here, but instead continue to grow the tree and search for optimal solution
+
+        iter += 1
+
+    return iter
 
 
-
-
-def dijkstra(G, final_node):
-    # Q = heapdict.heapdict()
-    # visited = []
-    # neighbors = G.neighbors.copy()
-    # for i in range(len(G.vertices)):
-    #     Q[i] = [[float("inf"), G.vertices[i]]]
-    # Q[G.vertives[G.goal]][0] = 0
-    # while not len(Q) == 0:
-    #     u = Q.popitem()
-    #     id_u = G.id_vertex[u[1]]
-    #     for v in G.neighbors[id_u]:
-    #         if v in visited:
-    #             continue
-    #         visited.append(v)
-    #         id_v = G.id_vertex[v]
-    #         alt = u[0] + G.neighbors[id_u][id_v]
-    #         if alt < Q[]
+def dijkstra(G, final_node):    # room for improvement with PriorityQueue or heapdict
     id_start = G.id_vertex[G.start]
     id_goal = G.id_vertex[G.goal]
 
@@ -327,6 +362,47 @@ def dijkstra(G, final_node):
     return list(path)
 
 
+def dijkstra2(G, start_node):
+    closed = set()                                  # set of visited nodes
+    parent = {}                                     # dict of nodes parents
+    pq = []
+    node_scores = defaultdict(lambda: float("inf"))
+    node_scores[G.id_vertex[start_node]] = 0         # set score of start_node to 0
+    heap.heappush(pq, (0, G.id_vertex[start_node]))  # add first node to priority queue
+
+    while pq:
+        _, min_cost_node = heap.heappop(pq)         # get the node with lowest cost
+        if G.vertices[min_cost_node] == G.start:    # if this node is start node, end the loop, solution found
+            break
+        closed.add(min_cost_node)                   # add selected node to set of visited nodes
+
+        for v, cost in G.neighbors[min_cost_node]:  # iterate through each of the node's neighbors
+            if v in closed:                         # if the node is in set of visited nodes, continue
+                continue
+            alt = node_scores[min_cost_node] + cost  # calculate alternative cost for the node
+            if alt < node_scores[v]:                # if the alternative cost is smaller than current
+                parent[v] = min_cost_node           # set parent of this node to the min_node
+                node_scores[v] = alt                # change the score of this node
+                heap.heappush(pq, (alt, v))         # add this node to priority queue to check next
+
+    path = []
+    u = G.id_vertex[G.start]                        # add start vertex to path
+    while True:
+        try:
+            path.append(G.vertices[u])              # try to get parent of the node
+            u = parent[u]                           # go deeper into the tree
+        except KeyError:
+            break
+
+    prev_node = G.start
+    for point in path:
+        plt.plot((prev_node[0], point[0]), (prev_node[1], point[1]), c='red')
+        prev_node = point
+    plt.plot((prev_node[0], G.goal[0]), (prev_node[1], G.goal[1]), c='red')
+
+    return path, node_scores
+
+
 if __name__ == '__main__':
     map_width = 200
     map_height = 200
@@ -334,9 +410,16 @@ if __name__ == '__main__':
     goal_node = (130, 90)
     G = Graph(start_node, goal_node, map_width, map_height)
     my_map = Map((map_width, map_height), start_node, goal_node)
-    my_map.generate_obstacles(obstacle_count=30, size=7)
+    my_map.generate_obstacles(obstacle_count=50, size=7)
 
-    RRT(G, iter_num=200, map=my_map, step_length=25, bias=0)
+    iteration = RRT(G, iter_num=200, map=my_map, step_length=25, bias=0)
+    plot_graph(G, my_map.obstacles_c)
+    print(f"RRT algorithm stopped at iteration number: {iteration}")
+    plt.show()
+
+    G = Graph(start_node, goal_node, map_width, map_height)
+    iteration = RRT_star(G, iter_num=200, map=my_map, step_length=25, radius=20, bias=0)
+    print(f"RRT_star algorithm stopped at iteration number: {iteration}")
 
     plot_graph(G, my_map.obstacles_c)
 
