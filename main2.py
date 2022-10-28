@@ -66,16 +66,22 @@ class Graph:
         self.width = width
         self.height = height
 
-        self.vertices = {0: self.start}        # coordinates of vertices retrieved by their id
-        self.edges = {0: [(0, 0)]}                     # tuple of id of two vertices connected by an edge
-
-        self.neighbors = {0: []}       # dictionary of list of tuples of neighbors vertices along with cost between them
-        self.cost = {0: 0.0}           # dict of distances between two connected vertices
-        self.id_vertex = {self.start: 0}    # dict of ids of vertices where key is their position
-        self.children = {0: []}
         self.parent = {0: None}
+        self.children = {0: []}
+        self.vertices = {0: self.start}
+        self.cost = {0: 0.0}
+        self.id_vertex = {self.start: 0}
 
-        self.last_id = 0
+        # self.vertices = {0: self.start}        # coordinates of vertices retrieved by their id
+        # self.edges = {0: [(0, 0)]}                     # tuple of id of two vertices connected by an edge
+
+        # self.neighbors = {0: []}       # dictionary of list of tuples of neighbors vertices along with cost between them
+        # self.cost = {0: 0.0}           # dict of distances between two connected vertices
+        # self.id_vertex = {self.start: 0}    # dict of ids of vertices where key is their position
+        # self.children = {0: []}
+        # self.parent = {0: None}
+
+        self.last_id = 0    # ?
 
     def add_vertex(self, pos):
         """ Add new vertex to the Graph """
@@ -86,9 +92,9 @@ class Graph:
             id_vertex = self.last_id          # id is equal to current length of vertices
             self.vertices[id_vertex] = pos          # add new vertex to vertices list
             self.id_vertex[pos] = id_vertex         # add new vertex's id
-            self.neighbors[id_vertex] = []          # add new vertex's neighbors list
             self.children[id_vertex] = []           # add new vertex's children list
-            self.edges[id_vertex] = []              # add new vertex's edges list
+            # self.parent[id_vertex] = None         # not sure if initialization needed
+            # self.cost[id_vertex] = float("inf")   # not sure if initialization needed
         return id_vertex
 
     def remove_vertex(self, id):
@@ -97,21 +103,20 @@ class Graph:
         """
         parent = self.parent[id]
         pos = self.vertices[id]
-        remove_neighbors(G, id)
-        del self.children[parent][self.children[parent].index(id)]
-        del self.vertices[id]
-        del self.edges[id]
-        del self.id_vertex[pos]
-        del self.neighbors[id]
-        del self.children[id]
+        # remove_neighbors(G, id)
         del self.parent[id]
+        del self.children[parent][self.children[parent].index(id)]
+        del self.children[id]
+        del self.vertices[id]
         del self.cost[id]
+        del self.id_vertex[pos]
+        # del self.edges[id]
+        # del self.neighbors[id]
 
-    def add_edge(self, id1, id2, cost):
+    def add_edge(self, id_node, id_parent, cost):
         """ Add new edge to the graph """
-        self.edges[id1].append((id1, id2))            # append a tuple representing an edge between node id1 and id2
-        self.neighbors[id1].append((id2, cost))  # add id2 as neighbor of id2 along with cost between them
-        self.neighbors[id2].append((id1, cost))  # add id1 as neighbor of id1 along with cost between them
+        self.parent[id_node] = id_parent
+        self.children[id_parent].append(id_node)
 
     def random_node(self, bias=-1):
         """ Generate random point on the map, if bias is between [0;1),
@@ -212,8 +217,8 @@ def plot_graph(graph, obstacles):
     plt.scatter(graph.start[0], graph.start[1], c='pink')
     plt.scatter(graph.goal[0], graph.goal[1], c='red')
 
-    # edges = [(graph.vertices[edge[0]], graph.vertices[edge[1]]) for edge in p for key, p in graph.edges.items()]
-    edges = [(graph.vertices[edge[0]], graph.vertices[edge[1]]) for key, p in graph.edges.items() for edge in p]
+    edges = [(graph.vertices[id_ver], graph.vertices[child]) for pos_ver, id_ver in graph.id_vertex.items()
+             for child in graph.children[id_ver]]
     for edge in edges:
         plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='black', alpha=0.5)
 
@@ -284,10 +289,10 @@ def RRT(G, iter_num, map, step_length, bias=.0):
 
         dist_to_goal = calc_distance(q_new, G.goal)
         if dist_to_goal < 2 * NODE_RADIUS:
-            G.add_vertex(G.goal)
-            G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
+            # G.add_vertex(G.goal)
+            # G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
             print("********PATH FOUND**********")
-            dijkstra2(G, q_new)
+            # dijkstra2(G, q_new)
             break
 
         iter += 1
@@ -575,18 +580,18 @@ if __name__ == '__main__':
     print(f"RRT algorithm stopped at iteration number: {iteration}")
     plt.show()
 
-    G = Graph(start_node, goal_node, map_width, map_height)
-    iteration = RRT_star(G, iter_num=200, map=my_map, step_length=25, radius=30, bias=0)
-    print(f"RRT_star algorithm stopped at iteration number: {iteration}")
-    plot_graph(G, my_map.obstacles_c)
-    plt.show()
-
-    G = Graph(start_node, goal_node, map_width, map_height)
-    iteration = RRT_star_FN(G, iter_num=500, map=my_map, step_length=25, radius=30, max_nodes=20, bias=0)
-    print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
-    plot_graph(G, my_map.obstacles_c)
-
-    plt.show()
+    # G = Graph(start_node, goal_node, map_width, map_height)
+    # iteration = RRT_star(G, iter_num=200, map=my_map, step_length=25, radius=30, bias=0)
+    # print(f"RRT_star algorithm stopped at iteration number: {iteration}")
+    # plot_graph(G, my_map.obstacles_c)
+    # plt.show()
+    #
+    # G = Graph(start_node, goal_node, map_width, map_height)
+    # iteration = RRT_star_FN(G, iter_num=500, map=my_map, step_length=25, radius=30, max_nodes=20, bias=0)
+    # print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
+    # plot_graph(G, my_map.obstacles_c)
+    #
+    # plt.show()
 
     # RRT_STAR robi niepołączone z niczym gałęzie
     # jeden raz przeszedł node przez przeszkodę
