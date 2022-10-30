@@ -5,6 +5,11 @@ import time
 from collections import deque
 from collections import defaultdict
 import heapq as heap
+import warnings
+from tqdm.auto import tqdm
+
+
+warnings.filterwarnings("error")
 
 NODE_RADIUS = 5
 
@@ -69,7 +74,7 @@ class Graph:
         self.parent = {0: None}
         self.children = {0: []}
         self.vertices = {0: self.start}
-        self.cost = {0: 0.0}
+        self.cost = {0: 0.0}        # to node's parent
         self.id_vertex = {self.start: 0}
 
         # self.vertices = {0: self.start}        # coordinates of vertices retrieved by their id
@@ -82,6 +87,14 @@ class Graph:
         # self.parent = {0: None}
 
         self.last_id = 0    # ?
+
+    def get_cost(self, start_node):
+        cost_list = []
+        node = start_node
+        while self.parent[node] is not None:
+            cost_list.append(self.cost[node])
+            node = self.parent[node]
+        return sum(cost_list)
 
     def add_vertex(self, pos):
         """ Add new vertex to the Graph """
@@ -117,6 +130,7 @@ class Graph:
         """ Add new edge to the graph """
         self.parent[id_node] = id_parent
         self.children[id_parent].append(id_node)
+        self.cost[id_node] = cost
 
     def random_node(self, bias=-1):
         """ Generate random point on the map, if bias is between [0;1),
@@ -270,6 +284,7 @@ def new_node(to_vertex, from_vertex, max_length):
 
 def RRT(G, iter_num, map, step_length, bias=.0):
     """ RRT algorithm """
+    pbar = tqdm(total=iter_num+1)
     obstacles = map.obstacles_c
     # goal_node = None
     iter = 0
@@ -278,7 +293,7 @@ def RRT(G, iter_num, map, step_length, bias=.0):
         if map.is_occupied_c(q_rand):                               # if new node's position is in an obstacle
             continue
         q_near, id_near = nearest_node(G, q_rand, obstacles)        # search for the nearest node
-        if q_near is None:                                 # random node cannot be connected to nearest without obstacle
+        if q_near is None or q_rand == q_near:                                 # random node cannot be connected to nearest without obstacle
             continue
         q_new = new_node(q_rand, q_near, step_length)
         id_new = G.add_vertex(q_new)
@@ -287,15 +302,95 @@ def RRT(G, iter_num, map, step_length, bias=.0):
         # plot_graph(G, map.obstacles_c)
         # plt.show()
 
-        dist_to_goal = calc_distance(q_new, G.goal)
-        if dist_to_goal < 2 * NODE_RADIUS:
-            # G.add_vertex(G.goal)
-            # G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
-            print("********PATH FOUND**********")
-            # dijkstra2(G, q_new)
+        if check_solution(G, q_new, id_new, "RRT"):
             break
 
+        pbar.update(1)
         iter += 1
+
+    return iter
+
+
+def RRT_star(G, iter_num, map, step_length, radius, bias=.0):
+    """ RRT star algorithm """
+    pbar = tqdm(total=iter_num+1)
+    obstacles = map.obstacles_c
+    best_edge = None
+    iter = 0
+    while iter < iter_num:
+        # print(iter)
+        q_rand = G.random_node(bias=bias)   # generate random node
+        if map.is_occupied_c(q_rand):       # if it's generated on an obstacle, continue
+            continue
+        q_near, id_near = nearest_node(G, q_rand, obstacles)    # find the nearest to the random node; change function to also include radius?
+        if q_near is None or q_rand == q_near:                                 # random node cannot be connected to nearest without obstacle
+            continue
+        q_new = new_node(q_rand, q_near, step_length)       # get position of the new node
+        id_new = G.add_vertex(q_new)                        # get id of the new node
+        cost_new_near = calc_distance(q_new, q_near)        # find cost from q_new to q_near
+        best_edge = (id_new, id_near, cost_new_near)
+        G.cost[id_new] = cost_new_near    # calculate cost for new node from nearest node
+        G.parent[id_new] = id_near
+        find_best_node(G, q_new, id_new, best_edge, radius, obstacles)
+
+        G.add_edge(*best_edge)
+
+        # rewire
+        rewire(G, q_new, id_new, radius, obstacles)
+
+        if check_solution(G, q_new, id_new, "RRT_STAR"):
+            break
+
+        pbar.update(1)
+        iter += 1
+
+    return iter
+
+
+def RRT_star_FN(G, iter_num, map, step_length, radius, max_nodes=200, bias=.0):
+    """ RRT star algorithm """
+    pbar = tqdm(total=iter_num+1)
+    obstacles = map.obstacles_c
+    best_edge = None
+    n_of_nodes = 1  # only starting node at the beginning
+    iter = 0
+    while iter < iter_num:
+        # print(iter)
+        q_rand = G.random_node(bias=bias)  # generate random node
+        if map.is_occupied_c(q_rand):  # if it's generated on an obstacle, continue
+            continue
+        q_near, id_near = nearest_node(G, q_rand,
+                                       obstacles)  # find the nearest to the random node; change function to also include radius?
+        if q_near is None or q_rand == q_near:                                 # random node cannot be connected to nearest without obstacle
+            continue
+        q_new = new_node(q_rand, q_near, step_length)  # get position of the new node
+        id_new = G.add_vertex(q_new)  # get id of the new node
+        n_of_nodes += 1
+        cost_new_near = calc_distance(q_new, q_near)  # find cost from q_new to q_near
+        best_edge = (id_new, id_near, cost_new_near)
+        G.cost[id_new] = cost_new_near  # calculate cost for new node from nearest node
+        G.parent[id_new] = id_near
+        find_best_node(G, q_new, id_new, best_edge, radius, obstacles)
+
+        G.add_edge(*best_edge)
+
+        # rewire
+        rewire(G, q_new, id_new, radius, obstacles)
+
+        # delete random childless node if needed
+        if n_of_nodes > max_nodes:
+            childless_nodes = [node for node, children in G.children.items() if len(children) == 0]
+            id_ver = random.choice(childless_nodes)
+            G.remove_vertex(id_ver)
+            n_of_nodes -= 1
+
+        if check_solution(G, q_new, id_new, "RRT_STAR_FN"):
+            break
+
+        pbar.update(1)
+        iter += 1
+        # plot_graph(G, map.obstacles_c)
+        # plt.show()
 
     return iter
 
@@ -310,186 +405,91 @@ def find_best_node(G, q_new, id_new, best_edge, radius, obstacles):
         line = Line(vertex, q_new)  # create Line object from new node to vertex
         if through_obstacle(line, obstacles):  # if the line goes through obstacle - continue
             continue
-        if G.cost[id_new] > G.cost[id_ver] + distance_new_vert:  # if cost from new node to vertex is smaller
-            G.cost[id_new] = G.cost[id_ver] + distance_new_vert  # than current cost, rewire the vertex to new
+        # if G.cost[id_new] > G.cost[id_ver] + distance_new_vert:  # if cost from new node to vertex is smaller
+        if G.get_cost(id_new) > G.get_cost(id_ver) + distance_new_vert:
+            # G.cost[id_new] = G.cost[id_ver] + distance_new_vert  # than current cost, rewire the vertex to new
+            G.cost[id_new] = distance_new_vert
+            # best_edge = (id_new, id_ver, G.cost[id_ver] + distance_new_vert)
             best_edge = (id_new, id_ver, distance_new_vert)
 
     return best_edge
 
 
 def rewire(G, q_new, id_new, radius, obstacles):
-    for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
-        if id_ver == id_new:
-            continue
-        distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
-        if distance_new_vert > radius:  # if distance is greater than search radius - continue
-            continue
-        line = Line(vertex, q_new)  # create Line object from new node to vertex
-        if through_obstacle(line, obstacles):  # if the line goes through obstacle - continue
-            continue
-        if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:  # if cost from new node to vertex is smaller
+    for id_ver, vertex in G.vertices.items():
+        if id_ver == G.id_vertex[G.start]: continue
+        if id_ver == id_new: continue
+        distance_new_vert = calc_distance(q_new, vertex)
+        if distance_new_vert > radius: continue
+        line = Line(vertex, q_new)
+        if through_obstacle(line, obstacles): continue
+        # if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:
+        if G.get_cost(id_ver) > G.get_cost(id_new) + distance_new_vert:
+            parent = G.parent[id_ver]           # parent of the rewired node
+            del G.children[parent][G.children[parent].index(id_ver)]  # delete rewired node from it's parent children
+            G.parent[id_ver] = id_new           # set rewired node's parent to new node
+            G.children[id_new].append(id_ver)   # append rewired node to new node's children
+            # saved_cost = G.cost[id_ver] - (G.cost[id_new] + distance_new_vert)
             # G.cost[id_ver] = G.cost[id_new] + distance_new_vert
-            # G.edges[id_ver] = [(id_ver, id_new)]    # PROBLEM HERE *******************************************
-            parent = G.parent[id_ver]
-            del G.children[parent][G.children[parent].index(id_ver)]
-            G.parent[id_ver] = id_new
-            G.children[id_new].append(id_ver)
-            G.cost[id_ver] = G.cost[id_new] + distance_new_vert
-            G.edges[id_ver] = [(id_ver, id_new)]      # PROBLEM HERE *******************************************
+            G.cost[id_ver] = distance_new_vert
+            # update_cost(G, id_ver, saved_cost)
 
 
-def check_solution(G, q_new, id_new):
+# def update_cost(G, parent_node, saved_cost):    # legacy
+#     node = parent_node
+#     for child in G.children[node]:
+#         G.cost[child] -= saved_cost
+#         if len(G.children[child]) != 0:
+#             update_cost(G, child, saved_cost)
+#
+#     # for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
+#     #     if id_ver == id_new:
+#     #         continue
+#     #     distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
+#     #     if distance_new_vert > radius:  # if distance is greater than search radius - continue
+#     #         continue
+#     #     line = Line(vertex, q_new)  # create Line object from new node to vertex
+#     #     if through_obstacle(line, obstacles):  # if the line goes through obstacle - continue
+#     #         continue
+#     #     if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:  # if cost from new node to vertex is smaller
+#     #         # G.cost[id_ver] = G.cost[id_new] + distance_new_vert
+#     #         # G.edges[id_ver] = [(id_ver, id_new)]    # PROBLEM HERE *******************************************
+#     #         parent = G.parent[id_ver]
+#     #         del G.children[parent][G.children[parent].index(id_ver)]
+#     #         G.parent[id_ver] = id_new
+#     #         G.children[id_new].append(id_ver)
+#     #         G.cost[id_ver] = G.cost[id_new] + distance_new_vert
+#     #         G.edges[id_ver] = [(id_ver, id_new)]      # PROBLEM HERE *******************************************
+
+
+def check_solution(G, q_new, id_new, title=""):
     dist_to_goal = calc_distance(q_new, G.goal)  # check if the goal has been reached
     if dist_to_goal < 2 * NODE_RADIUS:
-        G.add_vertex(G.goal)
-        G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
+        find_solution(G, id_new, title)
+        # G.add_vertex(G.goal)
+        # G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
         print("********PATH FOUND**********")
-        dijkstra2(G, q_new)
+        # dijkstra2(G, q_new)
         return True  # it should absolutely not stop here, but instead continue to grow the tree and search for optimal solution
     return False
 
 
-def RRT_star(G, iter_num, map, step_length, radius, bias=.0):
-    """ RRT star algorithm """
-    obstacles = map.obstacles_c
-    best_edge = None
-    iter = 0
-    while iter < iter_num:
-        q_rand = G.random_node(bias=bias)   # generate random node
-        if map.is_occupied_c(q_rand):       # if it's generated on an obstacle, continue
-            continue
-        q_near, id_near = nearest_node(G, q_rand, obstacles)    # find the nearest to the random node; change function to also include radius?
-        if q_near is None:
-            continue
-        q_new = new_node(q_rand, q_near, step_length)       # create the new node
-        id_new = G.add_vertex(q_new)                        # get id of the new node
-        cost_new_near = calc_distance(q_new, q_near)        # find cost from q_new to q_near
-        best_edge = (id_new, id_near, cost_new_near)
-        G.cost[id_new] = G.cost[id_near] + cost_new_near    # calculate cost for new node from nearest node
-        # plot_graph(G, map.obstacles_c)
-        # plt.show()
-        # for id_ver, vertex in G.vertices.items():                           # iterate through all the vertices
-        #     if id_ver == id_new:
-        #         continue
-        #     distance_new_vert = calc_distance(q_new, vertex)    # calculate distance between new node and vertex node
-        #     if distance_new_vert > radius:                      # if distance is greater than search radius - continue
-        #         continue
-        #     line = Line(vertex, q_new)                          # create Line object from new node to vertex
-        #     if through_obstacle(line, obstacles):               # if the line goes through obstacle - continue
-        #         continue
-        #     if G.cost[id_new] > G.cost[id_ver] + distance_new_vert:  # if cost from new node to vertex is smaller
-        #         G.cost[id_new] = G.cost[id_ver] + distance_new_vert  # than current cost, rewire the vertex to new
-        #         best_edge = (id_new, id_ver, distance_new_vert)
-        find_best_node(G, q_new, id_new, best_edge, radius, obstacles)
-
-        G.parent[id_new] = best_edge[1]
-        G.children[best_edge[1]].append(id_new)
-        G.add_edge(*best_edge)
-
-        # rewire
-        rewire(G, q_new, id_new, radius, obstacles)
-        # for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
-        #     if id_ver == id_new:
-        #         continue
-        #     distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
-        #     if distance_new_vert > radius:  # if distance is greater than search radius - continue
-        #         continue
-        #     line = Line(vertex, q_new)  # create Line object from new node to vertex
-        #     if through_obstacle(line, obstacles):  # if the line goes through obstacle - continue
-        #         continue
-        #     if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:  # if cost from new node to vertex is smaller
-        #         G.cost[id_ver] = G.cost[id_new] + distance_new_vert
-        #         G.edges[id_ver] = [(id_ver, id_new)]
-        # dist_to_goal = calc_distance(q_new, G.goal)                     # check if the goal has been reached
-        # if dist_to_goal < 2 * NODE_RADIUS:
-        #     G.add_vertex(G.goal)
-        #     G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
-        #     print("********PATH FOUND**********")
-        #     dijkstra2(G, q_new)
-        #     break       # it should absolutely not stop here, but instead continue to grow the tree and search for optimal solution
-        if check_solution(G, q_new, id_new):
-            break
-        iter += 1
-
-    return iter
-
-
-def RRT_star_FN(G, iter_num, map, step_length, radius, max_nodes=200, bias=.0):
-    """ RRT star algorithm """
-    obstacles = map.obstacles_c
-    best_edge = None
-    n_of_nodes = 1  # only starting node at the beginning
-    iter = 0
-    while iter < iter_num:
-        q_rand = G.random_node(bias=bias)   # generate random node
-        if map.is_occupied_c(q_rand):       # if it's generated on an obstacle, continue
-            continue
-        q_near, id_near = nearest_node(G, q_rand, obstacles)    # find the nearest to the random node; change function to also include radius?
-        if q_near is None:
-            continue
-        q_new = new_node(q_rand, q_near, step_length)       # create the new node
-        id_new = G.add_vertex(q_new)                        # get id of the new node
-        cost_new_near = calc_distance(q_new, q_near)        # find cost from q_new to q_near
-        best_edge = (id_new, id_near, cost_new_near)
-        G.cost[id_new] = G.cost[id_near] + cost_new_near    # calculate cost for new node from nearest node
-        n_of_nodes += 1
-
-        for id_ver, vertex in G.vertices.items():                           # iterate through all the vertices
-            # id_ver = G.id_vertex[vertex]                     # get the id of the vertex
-            if id_ver == id_new:
-                continue
-            distance_new_vert = calc_distance(q_new, vertex)    # calculate distance between new node and vertex node
-            if distance_new_vert > radius:                      # if distance is greater than search radius - continue
-                continue
-            line = Line(vertex, q_new)                          # create Line object from new node to vertex
-            if through_obstacle(line, obstacles):               # if the line goes through obstacle - continue
-                continue
-            if G.cost[id_new] > G.cost[id_ver] + distance_new_vert:  # if cost from new node to vertex is smaller
-                G.cost[id_new] = G.cost[id_ver] + distance_new_vert  # new parent of vertex is id_new
-                best_edge = (id_new, id_ver, distance_new_vert)      # than current cost, rewire the vertex to new
-
-        G.parent[id_new] = best_edge[1]
-        G.children[best_edge[1]].append(id_new)
-        G.add_edge(*best_edge)
-
-        # rewire
-        for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
-            if id_ver == id_new:
-                continue
-            distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
-            if distance_new_vert > radius:  # if distance is greater than search radius - continue
-                continue
-            line = Line(vertex, q_new)  # create Line object from new node to vertex
-            if through_obstacle(line, obstacles):  # if the line goes through obstacle - continue
-                continue
-            if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:  # if cost from new node to vertex is smaller
-                parent = G.parent[id_ver]
-                del G.children[parent][G.children[parent].index(id_ver)]
-                G.parent[id_ver] = id_new
-                G.children[id_new].append(id_ver)
-                G.cost[id_ver] = G.cost[id_new] + distance_new_vert
-                G.edges[id_ver] = [(id_ver, id_new)]
-
-        # delete random childless node if needed
-        if n_of_nodes > max_nodes:
-            childless_nodes = [node for node, children in G.children.items() if len(children) == 0]
-            id_ver = random.choice(childless_nodes)
-            G.remove_vertex(id_ver)
-            n_of_nodes -= 1
-
-        dist_to_goal = calc_distance(q_new, G.goal)                     # check if the goal has been reached
-        if dist_to_goal < 2 * NODE_RADIUS:
-            G.add_vertex(G.goal)
-            G.add_edge(id_new, G.id_vertex[G.goal], dist_to_goal)
-            print("********PATH FOUND**********")
-            dijkstra2(G, q_new)
-            break       # it should absolutely not stop here, but instead continue to grow the tree and search for optimal solution
-
-        iter += 1
-        # plot_graph(G, map.obstacles_c)
-        # plt.show()
-
-    return iter
+def find_solution(G, start_node, title):
+    path = []
+    node = start_node
+    try:
+        while G.parent[node] is not None:
+            path.append(node)
+            node = G.parent[node]
+    except KeyError:
+        pass
+    path.append(G.id_vertex[G.start])
+    prev_node = G.goal
+    for point in path:
+        plt.plot((prev_node[0], G.vertices[point][0]), (prev_node[1], G.vertices[point][1]), c='red')
+        prev_node = G.vertices[point]
+    plt.title(title)
+    # plt.plot((prev_node[0], G.goal[0]), (prev_node[1], G.goal[1]), c='red')
 
 
 def dijkstra(G, final_node):    # room for improvement with PriorityQueue or heapdict
@@ -575,24 +575,22 @@ if __name__ == '__main__':
     my_map = Map((map_width, map_height), start_node, goal_node)
     my_map.generate_obstacles(obstacle_count=50, size=7)
 
-    iteration = RRT(G, iter_num=200, map=my_map, step_length=25, bias=0)
+    iteration = RRT(G, iter_num=500, map=my_map, step_length=25, bias=0)
     plot_graph(G, my_map.obstacles_c)
     print(f"RRT algorithm stopped at iteration number: {iteration}")
     plt.show()
 
-    # G = Graph(start_node, goal_node, map_width, map_height)
-    # iteration = RRT_star(G, iter_num=200, map=my_map, step_length=25, radius=30, bias=0)
-    # print(f"RRT_star algorithm stopped at iteration number: {iteration}")
-    # plot_graph(G, my_map.obstacles_c)
-    # plt.show()
-    #
-    # G = Graph(start_node, goal_node, map_width, map_height)
-    # iteration = RRT_star_FN(G, iter_num=500, map=my_map, step_length=25, radius=30, max_nodes=20, bias=0)
-    # print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
-    # plot_graph(G, my_map.obstacles_c)
-    #
-    # plt.show()
+    G = Graph(start_node, goal_node, map_width, map_height)
+    iteration = RRT_star(G, iter_num=500, map=my_map, step_length=25, radius=30, bias=0)
+    print(f"RRT_star algorithm stopped at iteration number: {iteration}")
+    plot_graph(G, my_map.obstacles_c)
+    plt.show()
 
-    # RRT_STAR robi niepołączone z niczym gałęzie
-    # jeden raz przeszedł node przez przeszkodę
-    # jest problem z rewire w RRT_STAR
+    G = Graph(start_node, goal_node, map_width, map_height)
+    iteration = RRT_star_FN(G, iter_num=500, map=my_map, step_length=25, radius=30, max_nodes=20, bias=0)
+    print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
+    plot_graph(G, my_map.obstacles_c)
+
+    plt.show()
+
+    # nie kończyć iteracji po znalezieniu rozwiązania
