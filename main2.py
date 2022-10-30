@@ -308,6 +308,7 @@ def RRT(G, iter_num, map, step_length, bias=.0):
         pbar.update(1)
         iter += 1
 
+    pbar.close()
     return iter
 
 
@@ -344,6 +345,7 @@ def RRT_star(G, iter_num, map, step_length, radius, bias=.0):
         pbar.update(1)
         iter += 1
 
+    pbar.close()
     return iter
 
 
@@ -392,6 +394,7 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, max_nodes=200, bias=.0):
         # plot_graph(G, map.obstacles_c)
         # plt.show()
 
+    pbar.close()
     return iter
 
 
