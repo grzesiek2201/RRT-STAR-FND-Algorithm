@@ -17,12 +17,13 @@ def time_function(func):
     def wrapper(*args, **kwargs):
         start_time = perf_counter()
 
-        func(*args, **kwargs)
+        args = func(*args, **kwargs)
 
         end_time = perf_counter()
         total_time = round(end_time - start_time, 2)
 
         print(f"Execution time of {func.__name__}: {total_time}")
+        return args
 
     return wrapper
 
@@ -69,7 +70,7 @@ def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int,
 
 
 @time_function
-def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0):
+def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0, live_update=False) -> tuple:
     """
     RRT star algorithm.
     :param G: Graph
@@ -79,7 +80,8 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0):
     :param radius: radius of circular area that rewire algorithm will be performed on
     :param node_radius: radius of a node
     :param bias: 0-1, bias towards goal node
-    :return: number of iterations
+    :param live_update: live presentation of the algorithm on plot
+    :return: number of iterations, the best path with cost
     """
     pbar = tqdm(total=iter_num)
     obstacles = map.obstacles_c
@@ -110,10 +112,14 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0):
 
         # check for solution
         if check_solution(G, q_new, node_radius):
-            path, _ = find_path(G, id_new)
-            plot_path(G, path, "RRT_STAR")
+            path, cost = find_path(G, id_new)
             finish_nodes_of_path.append(id_new)
             solution_found = True
+
+            best_path["path"] = path
+            best_path["cost"] = cost
+            plot_path(G, path, "RRT_STAR")
+            break
 
         # update cost of paths
         for node in finish_nodes_of_path:
@@ -124,20 +130,25 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0):
 
         pbar.update(1)
         iter += 1
-        # plt.pause(0.001)
-        # plt.clf()
-        # plot_graph(G, map.obstacles_c)
-        # if solution_found:
-        #     plot_path(G, best_path["path"], "RRT_STAR_FN", best_path["cost"])
+        if live_update:
+            plt.pause(0.001)
+            plt.clf()
+            plot_graph(G, map.obstacles_c)
+            if solution_found:
+                plot_path(G, best_path["path"], "RRT_STAR", best_path["cost"])
+
+    if solution_found:
+        plot_path(G, best_path["path"], "RRT_STAR", best_path["cost"])
 
     pbar.close()
-    return iter
+
+    return iter, best_path
 
 
 @time_function
-def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nodes=200, bias=.0):
+def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nodes=200, bias=.0, live_update: bool = False):
     """
-    RRT star algorithm.
+    RRT star FN algorithm.
     :param G: Graph
     :param iter_num: number of iterations for the algorithm
     :param map: Map
@@ -146,8 +157,12 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nod
     :param node_radius: radius of a node
     :param max_nodes: maximum number of nodes
     :param bias: 0-1, bias towards goal node
+    :param live_update: live presentation of the algorithm on plot
     :return: number of iterations
     """
+    # plot_graph(G, map.obstacles_c)
+    # plt.pause(3)
+
     pbar = tqdm(total=iter_num)
     obstacles = map.obstacles_c
     best_edge = None
@@ -188,10 +203,7 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nod
         # check for solution
         if check_solution(G, q_new, node_radius):
             path, _ = find_path(G, id_new)
-            plot_path(G, path, "RRT_STAR_FN")
-            # nodes_in_path += path
             finish_nodes_of_path.append(id_new)
-            # current_path = path
             solution_found = True
             # break
 
@@ -204,14 +216,109 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nod
 
         pbar.update(1)
         iter += 1
-        # plt.pause(0.001)
-        # plt.clf()
-        # plot_graph(G, map.obstacles_c)
-        # if solution_found:
-        #     plot_path(G, best_path["path"], "RRT_STAR_FN", best_path["cost"])
+        if live_update:
+            plt.pause(0.001)
+            plt.clf()
+            plot_graph(G, map.obstacles_c)
+            if solution_found:
+                plot_path(G, best_path["path"], "RRT_STAR_FN", best_path["cost"])
 
+    if solution_found:
+        plot_path(G, best_path["path"], "RRT_STAR_FN", best_path["cost"])
     pbar.close()
-    return iter
+    return iter, best_path
+
+
+def RRT_STAR_FND(G: Graph, iter_num: int, map: Map, step_length: int, radius: float,
+                 node_radius: int, max_nodes: int = 200, bias: float = .0, live_update: bool = False) -> None:
+    """
+    RRT star FN Dynamic algorithm.
+    :param G: Graph
+    :param iter_num: number of iterations for the algorithm
+    :param map: Map
+    :param step_length: maximum allowed length of the edge between two nodes
+    :param radius: radius of circular area that rewire algorithm will be performed on
+    :param node_radius: radius of a node
+    :param max_nodes: maximum number of nodes
+    :param bias: 0-1, bias towards goal node
+    :param live_update: live presentation of the algorithm on plot
+    :return: number of iterations
+    """
+    iter, best_path = RRT_star_FN(G=G, iter_num=iter_num, map=map, step_length=step_length,
+                radius=radius, node_radius=node_radius, max_nodes=max_nodes, bias=bias, live_update=live_update)
+    p_current = G.start
+    init_movement()
+
+
+def init_movement():
+    pass
+
+
+def select_branch(G: Graph, current_node: int, path: list, map: Map) -> None:
+    """
+    Select branch algorithm used in RRT_*_FND. Deletes all the nodes that are no longer in path and their children.
+    :param G: Graph
+    :param current_node: node that has been reached and parents of which and their children will be deleted
+    :param path: previous path
+    :param map: Map
+    :return: None
+    """
+    parent = G.parent[current_node]
+    G.parent[current_node] = None                           # set parent of current node to None
+    del G.children[parent][G.children[parent].index(current_node)]    # delete current node from previous parent's children
+
+    plt.figure()
+    plot_graph(G, map.obstacles_c)
+    plt.show()
+
+    stranded_nodes = path[path.index(current_node) + 1:]
+    for stranded_node in reversed(stranded_nodes):
+        if stranded_node == current_node: break
+        remove_children(G, stranded_node, path)
+        plt.figure()
+        plot_graph(G, map.obstacles_c)
+        plt.show()
+
+    for node in stranded_nodes:
+        G.remove_vertex(node)
+
+
+def remove_children(G: Graph, id_node: int, path: list) -> None:
+    """
+    Removes all children of specified node if they are not in path.
+    :param G: Graph
+    :param id_node: id of node that children will be deleted
+    :param path: current path
+    :return: None
+    """
+    nodes_children = G.children[id_node].copy()
+    for id_child in nodes_children:
+        if id_child in path: continue
+        if len(G.children[id_child]) != 0:
+            remove_children(G, id_child, path)
+        G.remove_vertex(id_child)
+
+
+def test_select_branch():
+    map_width = 200
+    map_height = 200
+    start = (50, 50)
+    goal = (150, 150)
+    NODE_RADIUS = 7
+    my_map = Map((map_width, map_height), start, goal, NODE_RADIUS)
+    G = Graph(start, goal, map_width, map_height)
+    iteration, best_path = RRT_star(G, iter_num=500, map=my_map, step_length=25, radius=30, node_radius=NODE_RADIUS, bias=0)
+
+    plot_graph(G, my_map.obstacles_c)
+    plt.pause(0.001)
+
+    id_to_remove = best_path["path"][3]
+    select_branch(G, id_to_remove, best_path["path"], my_map)
+
+    print(f"RRT_star algorithm stopped at iteration number: {iteration}")
+    plt.figure()
+    plot_graph(G, my_map.obstacles_c)
+    plt.show()
 
 
 def intersection_circle(line: Line, circle: list) -> bool:
@@ -222,6 +329,11 @@ def intersection_circle(line: Line, circle: list) -> bool:
     :return: True if intersects, False if doesn't intersect
     """
     p1, p2 = line.p1, line.p2
+    if line.dir == float("inf"):  # when the line is vertical, thus calculating delta doesn't work
+        if abs(circle[0][0] - line.x_pos) <= circle[1]:
+            return True
+        else:
+            return False
     delta, a, b = calc_delta(line, circle)
     if delta < 0:   # no real solutions
         return False
@@ -301,9 +413,9 @@ def plot_graph(graph: Graph, obstacles: list):
     xes = [pos[0] for id, pos in graph.vertices.items()]
     yes = [pos[1] for id, pos in graph.vertices.items()]
 
-    plt.scatter(xes, yes)   # plotting nodes
-    plt.scatter(graph.start[0], graph.start[1], c='pink')
-    plt.scatter(graph.goal[0], graph.goal[1], c='red')
+    plt.scatter(xes, yes, c='gray')   # plotting nodes
+    plt.scatter(graph.start[0], graph.start[1], c='#49ab1f', s=50)
+    plt.scatter(graph.goal[0], graph.goal[1], c='red', s=50)
 
     edges = [(graph.vertices[id_ver], graph.vertices[child]) for pos_ver, id_ver in graph.id_vertex.items()
              for child in graph.children[id_ver]]
@@ -390,7 +502,7 @@ def plot_path(G: Graph, path: list, title: str = "", cost: float = float("inf"))
     """
     prev_node = G.goal
     for point in path:
-        plt.plot((prev_node[0], G.vertices[point][0]), (prev_node[1], G.vertices[point][1]), c='red')
+        plt.plot((prev_node[0], G.vertices[point][0]), (prev_node[1], G.vertices[point][1]), c='#057af7', linewidth=2)
         prev_node = G.vertices[point]
     plt.title(title + f" cost: {round(cost, 2)}")
 

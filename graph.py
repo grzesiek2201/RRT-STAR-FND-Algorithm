@@ -1,6 +1,10 @@
 import random
 
 
+class OutOfBoundsException(Exception):
+    print("Start or goal point out of bounds.")
+
+
 class Graph:
     def __init__(self, start: tuple, goal: tuple, width: int, height: int):
         """
@@ -9,6 +13,10 @@ class Graph:
         :param width:
         :param height:
         """
+        if (start[0] or goal[0]) > width or (start[0] or goal[0]) < 0 or \
+                (start[1] or goal[1]) > height or (start[1] or goal[1]) < 0:
+            raise OutOfBoundsException()
+
         self.start = start  # start position
         self.goal = goal  # goal position
         self.width = width
@@ -61,8 +69,9 @@ class Graph:
         """
         parent = self.parent[id]
         pos = self.vertices[id]
+        if self.parent[id] is not None:
+            del self.children[parent][self.children[parent].index(id)]
         del self.parent[id]
-        del self.children[parent][self.children[parent].index(id)]
         del self.children[id]
         del self.vertices[id]
         del self.cost[id]

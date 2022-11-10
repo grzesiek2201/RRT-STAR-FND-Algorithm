@@ -6,8 +6,9 @@ class Line:
         self.p1 = np.array(p1)
         self.p2 = np.array(p2)
         self.norm = np.linalg.norm(self.p1 - self.p2)
-        if p2[0] - p1[0] == 0:
-            self.dir = 0
+        if p2[0] == p1[0]:
+            self.dir = float("inf")
+            self.x_pos = p1[0]
         else:
             self.dir = (p2[1] - p1[1]) / (p2[0] - p1[0])
         self.const_term = self.p1[1] - self.dir * self.p1[0]

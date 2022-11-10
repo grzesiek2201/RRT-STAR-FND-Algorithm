@@ -10,6 +10,10 @@ class Map:
         :param start: position of start node
         :param goal: position of goal node
         """
+        if (start[0] or goal[0]) > size[0] or (start[0] or goal[0]) < 0 or \
+                (start[1] or goal[1]) > size[1] or (start[1] or goal[1]) < 0:
+            raise Exception("Start or goal point out of bounds.")
+
         self.obstacles_c = []  # list of obstacles' position and radius (circles)
         self.obstacles_r = []  # list of obstacles' upper-left and lower-right position (rectangles)
         self.width = size[0]
@@ -41,6 +45,10 @@ class Map:
             if distance < self.node_radius + obs[1]:
                 return True
         return False
+
+    def add_obstacles(self, obstacles):
+        for obstacle in obstacles:
+            self.obstacles_c.append(obstacle)
 
     def generate_obstacles(self, obstacle_count: int = 10, size: int = 1):
         """ Generate random obstacles stored in self.obstacles. Rectangles not yet implemented
