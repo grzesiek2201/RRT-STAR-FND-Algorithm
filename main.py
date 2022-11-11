@@ -148,7 +148,7 @@ if __name__ == '__main__':
     # plt.show()
     #
     # G = Graph(start_node, goal_node, map_width, map_height)
-    # iteration, _ = RRT_star(G, iter_num=500, map=my_map, step_length=25, radius=30, node_radius=NODE_RADIUS, bias=0)
+    # iteration, _ = RRT_star(G, iter_num=1000, map=my_map, step_length=25, radius=30, node_radius=NODE_RADIUS, bias=0)
     # print(f"RRT_star algorithm stopped at iteration number: {iteration}")
     # plot_graph(G, my_map.obstacles_c)
     # plt.show()

@@ -76,8 +76,6 @@ class Graph:
         del self.vertices[id]
         del self.cost[id]
         del self.id_vertex[pos]
-        # del self.edges[id]
-        # del self.neighbors[id]
 
     def add_edge(self, id_node: int, id_parent: int, cost: float):
         """ Add new edge to the graph

@@ -11,8 +11,10 @@ from line import Line
 
 
 def time_function(func):
-    """ Wrapper for function timing
-    :param func: function to time:"""
+    """
+    Wrapper for function timing
+    :param func: function to time
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = perf_counter()
@@ -116,10 +118,10 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0, l
             finish_nodes_of_path.append(id_new)
             solution_found = True
 
-            best_path["path"] = path
-            best_path["cost"] = cost
-            plot_path(G, path, "RRT_STAR")
-            break
+            # best_path["path"] = path
+            # best_path["cost"] = cost
+            # plot_path(G, path, "RRT_STAR")
+            # break
 
         # update cost of paths
         for node in finish_nodes_of_path:
@@ -254,14 +256,14 @@ def init_movement():
     pass
 
 
-def select_branch(G: Graph, current_node: int, path: list, map: Map) -> None:
+def select_branch(G: Graph, current_node: int, path: list, map: Map) -> list:
     """
     Select branch algorithm used in RRT_*_FND. Deletes all the nodes that are no longer in path and their children.
     :param G: Graph
     :param current_node: node that has been reached and parents of which and their children will be deleted
     :param path: previous path
     :param map: Map
-    :return: None
+    :return: new path
     """
     parent = G.parent[current_node]
     G.parent[current_node] = None                           # set parent of current node to None
@@ -271,6 +273,7 @@ def select_branch(G: Graph, current_node: int, path: list, map: Map) -> None:
     plot_graph(G, map.obstacles_c)
     plt.show()
 
+    new_path = path[: path.index(current_node) + 1]
     stranded_nodes = path[path.index(current_node) + 1:]
     for stranded_node in reversed(stranded_nodes):
         if stranded_node == current_node: break
@@ -281,6 +284,8 @@ def select_branch(G: Graph, current_node: int, path: list, map: Map) -> None:
 
     for node in stranded_nodes:
         G.remove_vertex(node)
+
+    return new_path
 
 
 def remove_children(G: Graph, id_node: int, path: list) -> None:
@@ -299,6 +304,49 @@ def remove_children(G: Graph, id_node: int, path: list) -> None:
         G.remove_vertex(id_child)
 
 
+def valid_path(G: Graph, path: list, map: Map, previous_root: int) -> int:
+    """
+    ValidPath algorithm that deletes nodes colliding with obstacles and these nodes' children
+    :param G: Graph
+    :param path: previous path
+    :param map: Map
+    :param previous_root: id of previous tree's root node
+    :return: id of node that is the root of the new, separated tree
+    """
+    id_separate_root = previous_root
+    nodes_in_path = [(id_node, G.vertices[id_node]) for id_node in path]
+    for id_node, pos_node in reversed(nodes_in_path):
+        if map.is_occupied_c(pos_node):                 # if node that is in path collides with an obstacle, delete it
+            remove_children(G, id_node, path)
+            id_remaining_child = G.children[id_node][0]    # the only remaining children of this node is in path
+            G.remove_vertex(id_node)                    # remove node that collides with an obstacle
+            G.parent[id_remaining_child] = None         # set the separate root node's parent to None
+            id_separate_root = id_remaining_child
+
+    return id_separate_root
+
+
+def reconnect(G: Graph, path: list, map: Map, step_size: float, id_separate_root: int):
+    tree_separate = []  # id of nodes in the separate tree
+    pass
+
+
+def check_for_tree_associativity(G: Graph, root_node: int, node_to_check: int) -> bool:
+    """
+    Check if node belongs to a tree with root at root_node
+    :param G: Graph
+    :param root_node: root of the tree
+    :param node_to_check: node that will be checked
+    :return: True if node_to_check belongs to tree
+    """
+    node = node_to_check
+    parent = G.parent[node]
+    while parent is not None:
+        node = G.parent[node]
+        parent = G.parent[node]
+    return node == root_node
+
+
 def test_select_branch():
     map_width = 200
     map_height = 200
@@ -307,18 +355,28 @@ def test_select_branch():
     NODE_RADIUS = 7
     my_map = Map((map_width, map_height), start, goal, NODE_RADIUS)
     G = Graph(start, goal, map_width, map_height)
-    iteration, best_path = RRT_star(G, iter_num=500, map=my_map, step_length=25, radius=30, node_radius=NODE_RADIUS, bias=0)
+    iteration, best_path = RRT_star(G, iter_num=500, map=my_map, step_length=15, radius=15, node_radius=NODE_RADIUS, bias=0)
 
     plot_graph(G, my_map.obstacles_c)
     plt.pause(0.001)
 
-    id_to_remove = best_path["path"][3]
-    select_branch(G, id_to_remove, best_path["path"], my_map)
+    id_to_remove = list(reversed(best_path["path"]))[5]
+    best_path["path"] = select_branch(G, id_to_remove, best_path["path"], my_map)
+
+    my_map.add_obstacles([[G.vertices[best_path["path"][3]], 7]])
+    my_map.add_obstacles([[G.vertices[best_path["path"][4]], 7]])
+    plt.figure()
+    plot_graph(G, my_map.obstacles_c)
+    plt.show()
+
+    id_separate_root = valid_path(G, best_path["path"], my_map, id_to_remove)
 
     print(f"RRT_star algorithm stopped at iteration number: {iteration}")
     plt.figure()
     plot_graph(G, my_map.obstacles_c)
     plt.show()
+
+    check_for_tree_associativity(G, id_separate_root, G.children[G.children[id_separate_root][0]][0])
 
 
 def intersection_circle(line: Line, circle: list) -> bool:
@@ -553,18 +611,37 @@ def find_best_node(G: Graph, q_new: tuple, id_new: int, best_edge: tuple, radius
     :param obstacles: list of obstacles
     :return: id of best node
     """
-    for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
-        if id_ver == id_new: continue
-        distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
-        if distance_new_vert > radius: continue  # if distance is greater than search radius - continue
-        line = Line(vertex, q_new)  # create Line object from new node to vertex
-        if through_obstacle(line, obstacles): continue  # if the line goes through obstacle - continue
-        # if G.cost[id_new] > G.cost[id_ver] + distance_new_vert:  # if cost from new node to vertex is smaller
-        if G.get_cost(id_new) > G.get_cost(id_ver) + distance_new_vert:
-            # G.cost[id_new] = G.cost[id_ver] + distance_new_vert  # than current cost, rewire the vertex to new
+
+    tree_points_list = [vertex for id_ver, vertex in G.vertices.items()]
+    tree_points = np.array(tree_points_list)
+    new_point = np.array(q_new).reshape(-1, 2)
+    x2 = np.sum(tree_points**2, axis=1).reshape(-1, 1)
+    y2 = np.sum(new_point**2, axis=1).reshape(-1, 1)
+    xy = 2 * np.matmul(tree_points, new_point.T)
+    dists = np.sqrt(x2 - xy + y2.T)
+
+    costs = {id_ver: id_and_cost[0] for id_ver, id_and_cost in zip(G.vertices, dists)}
+
+    for id_and_vertex, id_and_cost in zip(G.vertices.items(), costs.items()):
+        # print(f"{id_and_vertex[0]}: {id_and_vertex[1]}, {id_and_cost[1]}")
+        if id_and_vertex[0] == id_new: continue
+        distance_new_vert = id_and_cost[1]
+        if distance_new_vert > radius: continue
+        line = Line(id_and_vertex[1], q_new)
+        if through_obstacle(line, obstacles): continue
+        if G.get_cost(id_new) < G.get_cost(id_and_vertex[0]) + distance_new_vert:
             G.cost[id_new] = distance_new_vert
-            # best_edge = (id_new, id_ver, G.cost[id_ver] + distance_new_vert)
-            best_edge = (id_new, id_ver, distance_new_vert)
+            best_edge = (id_new, id_and_vertex[0], distance_new_vert)
+
+    # for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
+    #     if id_ver == id_new: continue
+    #     distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
+    #     if distance_new_vert > radius: continue  # if distance is greater than search radius - continue
+    #     line = Line(vertex, q_new)  # create Line object from new node to vertex
+    #     if through_obstacle(line, obstacles): continue  # if the line goes through obstacle - continue
+    #     if G.get_cost(id_new) > G.get_cost(id_ver) + distance_new_vert:  # if cost from new node to vertex is smaller
+    #         G.cost[id_new] = distance_new_vert  # than current cost, rewire the vertex to new
+    #         best_edge = (id_new, id_ver, distance_new_vert)
 
     return best_edge
 
@@ -578,23 +655,51 @@ def rewire(G: Graph, q_new: tuple, id_new: int, radius: float, obstacles: list):
     :param radius: radius of search area
     :param obstacles: list of obstacles
     """
-    for id_ver, vertex in G.vertices.items():
+
+    tree_points_list = [vertex for id_ver, vertex in G.vertices.items()]
+    tree_points = np.array(tree_points_list)
+    new_point = np.array(q_new).reshape(-1, 2)
+    x2 = np.sum(tree_points**2, axis=1).reshape(-1, 1)
+    y2 = np.sum(new_point**2, axis=1).reshape(-1, 1)
+    xy = 2 * np.matmul(tree_points, new_point.T)
+    dists = np.sqrt(x2 - xy + y2.T)
+
+    costs = {id_ver: id_and_cost[0] for id_ver, id_and_cost in zip(G.vertices, dists)}
+
+    for id_and_vertex, id_and_cost in zip(G.vertices.items(), costs.items()):
+        id_ver = id_and_vertex[0]
+        vertex = id_and_vertex[1]
+        distance_new_vert = id_and_cost[1]
+
         if id_ver == G.id_vertex[G.start]: continue
         if id_ver == id_new: continue
-        distance_new_vert = calc_distance(q_new, vertex)
         if distance_new_vert > radius: continue
         line = Line(vertex, q_new)
         if through_obstacle(line, obstacles): continue
-        # if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:
         if G.get_cost(id_ver) > G.get_cost(id_new) + distance_new_vert:
-            parent = G.parent[id_ver]           # parent of the rewired node
+            parent = G.parent[id_ver]  # parent of the rewired node
             del G.children[parent][G.children[parent].index(id_ver)]  # delete rewired node from it's parent children
-            G.parent[id_ver] = id_new           # set rewired node's parent to new node
-            G.children[id_new].append(id_ver)   # append rewired node to new node's children
-            # saved_cost = G.cost[id_ver] - (G.cost[id_new] + distance_new_vert)
-            # G.cost[id_ver] = G.cost[id_new] + distance_new_vert
+            G.parent[id_ver] = id_new  # set rewired node's parent to new node
+            G.children[id_new].append(id_ver)  # append rewired node to new node's children
             G.cost[id_ver] = distance_new_vert
-            # update_cost(G, id_ver, saved_cost)
+
+    # for id_ver, vertex in G.vertices.items():
+    #     if id_ver == G.id_vertex[G.start]: continue
+    #     if id_ver == id_new: continue
+    #     distance_new_vert = calc_distance(q_new, vertex)
+    #     if distance_new_vert > radius: continue
+    #     line = Line(vertex, q_new)
+    #     if through_obstacle(line, obstacles): continue
+    #     # if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:
+    #     if G.get_cost(id_ver) > G.get_cost(id_new) + distance_new_vert:
+    #         parent = G.parent[id_ver]           # parent of the rewired node
+    #         del G.children[parent][G.children[parent].index(id_ver)]  # delete rewired node from it's parent children
+    #         G.parent[id_ver] = id_new           # set rewired node's parent to new node
+    #         G.children[id_new].append(id_ver)   # append rewired node to new node's children
+    #         # saved_cost = G.cost[id_ver] - (G.cost[id_new] + distance_new_vert)
+    #         # G.cost[id_ver] = G.cost[id_new] + distance_new_vert
+    #         G.cost[id_ver] = distance_new_vert
+    #         # update_cost(G, id_ver, saved_cost)
 
 
 def calc_distance(p1: tuple, p2: tuple) -> float:
