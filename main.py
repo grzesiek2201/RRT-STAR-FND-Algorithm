@@ -155,7 +155,7 @@ if __name__ == '__main__':
 
     # try:
     #     G = Graph(start_node, goal_node, map_width, map_height)
-    #     iteration, _ = RRT_star_FN(G, iter_num=5000, map=my_map, step_length=25,
+    #     iteration, _ = RRT_star_FN(G, iter_num=500, map=my_map, step_length=25,
     #                                radius=40, node_radius=NODE_RADIUS, max_nodes=30, bias=0.0, live_update=False)
     # except OutOfBoundsException as e:
     #     pass
@@ -166,3 +166,7 @@ if __name__ == '__main__':
 
     plt.ioff()
     plt.show()
+
+    # jest w reconnect znowu ten bug że jak szuka ścieżki to znajduje bezpośrednio do punktu startowego
+    # kiedy stare drzewo łączy się z nowym, ale do jakiegoś węzła który jest dzieckiem innego, powstaje konflikt,
+    # bo teraz ten węzeł ma dwóch rodziców
