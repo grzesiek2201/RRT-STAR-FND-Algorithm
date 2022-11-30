@@ -9,12 +9,15 @@ from graph import Graph
 from map import Map
 from line import Line
 
+from scipy.spatial import KDTree
+
 
 def time_function(func):
     """
     Wrapper for function timing
     :param func: function to time
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = perf_counter()
@@ -28,6 +31,7 @@ def time_function(func):
         return args
 
     return wrapper
+
 
 @time_function
 def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int, bias: float = .0):
@@ -43,16 +47,16 @@ def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int,
     """
     pbar = tqdm(total=iter_num)
     obstacles = map.obstacles_c
-    # goal_node = None
+
     iter = 0
     while iter < iter_num:
-        q_rand = G.random_node(bias=bias)                           # generate a new random node
-        if map.is_occupied_c(q_rand):                               # if new node's position is in an obstacle
+        q_rand = G.random_node(bias=bias)  # generate a new random node
+        if map.is_occupied_c(q_rand):  # if new node's position is in an obstacle
             continue
-        q_near, id_near = nearest_node(G, q_rand, obstacles)        # search for the nearest node
-        if q_near is None or q_rand == q_near:                                 # random node cannot be connected to nearest without obstacle
+        q_near, id_near = nearest_node(G, q_rand, obstacles)  # search for the nearest node
+        if q_near is None or q_rand == q_near:  # random node cannot be connected to nearest without obstacle
             continue
-        q_new = new_node(q_rand, q_near, step_length)
+        q_new = steer(q_rand, q_near, step_length)
         id_new = G.add_vertex(q_new)
         distance = calc_distance(q_new, q_near)
         G.add_edge(id_new, id_near, distance)
@@ -60,12 +64,18 @@ def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int,
         # plt.show()
 
         if check_solution(G, q_new, node_radius):
-            path, _ = find_path(G, id_new, G.id_vertex[G.start])
-            plot_path(G, path, "RRT")
-            # break
+            path, cost = find_path(G, id_new, G.id_vertex[G.start])
+            plot_path(G, path, "RRT", cost)
+            break
 
         pbar.update(1)
         iter += 1
+
+        # plt.pause(0.001)
+        # plt.clf()
+        # plot_graph(G, map.obstacles_c)
+        # plt.xlim((-200, 200))
+        # plt.ylim((-200, 200))
 
     pbar.close()
     return iter
@@ -88,28 +98,35 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0, l
     pbar = tqdm(total=iter_num)
     obstacles = map.obstacles_c
     best_edge = None
-    solution_found = False          # flag to know if the solution has already been found
-    best_path = {"path": [], "cost": float("inf")}                  # path with the smallest cost and its cost
-    finish_nodes_of_path = []        # ids of nodes that are the last nodes in found paths
+    solution_found = False  # flag to know if the solution has already been found
+    best_path = {"path": [], "cost": float("inf")}  # path with the smallest cost and its cost
+    finish_nodes_of_path = []  # ids of nodes that are the last nodes in found paths
     iter = 0
     while iter < iter_num:
-        q_rand = G.random_node(bias=bias)   # generate random node
-        if map.is_occupied_c(q_rand):       # if it's generated on an obstacle, continue
+        q_rand = G.random_node(bias=bias)  # generate random node
+        if map.is_occupied_c(q_rand):  # if it's generated on an obstacle, continue
             continue
-        q_near, id_near = nearest_node(G, q_rand, obstacles)    # find the nearest to the random node; change function to also include radius?
-        if q_near is None or q_rand == q_near:                                 # random node cannot be connected to nearest without obstacle
+        # potential_vertices_list = list(G.vertices.values())
+        # potential_vertices_list.append(q_rand)
+        # kdtree = KDTree(np.array(potential_vertices_list))  # create KDtree (2Dtree) and pass it to nearest_node function
+        q_near, id_near = nearest_node(G, q_rand,
+                                       obstacles)  # find the nearest to the random node; change function to also include radius?
+        if q_near is None or q_rand == q_near:  # random node cannot be connected to nearest without obstacle
             continue
-        q_new = new_node(q_rand, q_near, step_length)       # get position of the new node
+        q_new = steer(q_rand, q_near, step_length)  # get position of the new node
         if map.is_occupied_c(q_new): continue
-        id_new = G.add_vertex(q_new)                        # get id of the new node
-        cost_new_near = calc_distance(q_new, q_near)        # find cost from q_new to q_near
+        id_new = G.add_vertex(q_new)  # get id of the new node
+        cost_new_near = calc_distance(q_new, q_near)  # find cost from q_new to q_near
         best_edge = (id_new, id_near, cost_new_near)
-        G.cost[id_new] = cost_new_near    # calculate cost for new node from nearest node
+        G.cost[id_new] = cost_new_near  # calculate cost for new node from nearest node
         G.parent[id_new] = id_near
 
-        find_best_node(G, q_new, id_new, best_edge, radius, obstacles)
+        # chose_parent function should only search through the found subset of the nearest nodes!!!
+        choose_parent(G, q_new, id_new, best_edge, radius, obstacles)
         G.add_edge(*best_edge)
 
+
+        # create a new 2Dtree? not sure
         # rewire
         rewire(G, q_new, id_new, radius, obstacles)
 
@@ -121,8 +138,8 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0, l
 
             best_path["path"] = path
             best_path["cost"] = cost
-            plot_path(G, path, "RRT_STAR")
-            break
+            # plot_path(G, path, "RRT_STAR", cost)
+            # break
 
         # update cost of paths
         for node in finish_nodes_of_path:
@@ -149,7 +166,8 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0, l
 
 
 @time_function
-def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nodes=200, bias=.0, live_update: bool = False):
+def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nodes=200, bias=.0,
+                live_update: bool = False):
     """
     RRT star FN algorithm.
     :param G: Graph
@@ -169,29 +187,29 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nod
     pbar = tqdm(total=iter_num)
     obstacles = map.obstacles_c
     best_edge = None
-    n_of_nodes = 1                  # only starting node at the beginning
-    solution_found = False          # flag to know if the solution has already been found
-    best_path = {"path": [], "cost": float("inf")}                  # path with the smallest cost and its cost
-    finish_nodes_of_path = []        # ids of nodes that are the last nodes in found paths
+    n_of_nodes = 1  # only starting node at the beginning
+    solution_found = False  # flag to know if the solution has already been found
+    best_path = {"path": [], "cost": float("inf")}  # path with the smallest cost and its cost
+    finish_nodes_of_path = []  # ids of nodes that are the last nodes in found paths
     iter = 0
     while iter < iter_num:
-        q_rand = G.random_node(bias=bias)               # generate random node
-        if map.is_occupied_c(q_rand):                   # if it's generated on an obstacle, continue
+        q_rand = G.random_node(bias=bias)  # generate random node
+        if map.is_occupied_c(q_rand):  # if it's generated on an obstacle, continue
             continue
         q_near, id_near = nearest_node(G, q_rand,
-                                       obstacles)       # find the nearest to the random node; change function to also include radius?
-        if q_near is None or q_rand == q_near:          # random node cannot be connected to nearest without obstacle
+                                       obstacles)  # find the nearest to the random node; change function to also include radius?
+        if q_near is None or q_rand == q_near:  # random node cannot be connected to nearest without obstacle
             continue
-        q_new = new_node(q_rand, q_near, step_length)   # get position of the new node
+        q_new = steer(q_rand, q_near, step_length)  # get position of the new node
         if map.is_occupied_c(q_new): continue
-        id_new = G.add_vertex(q_new)                    # get id of the new node
+        id_new = G.add_vertex(q_new)  # get id of the new node
         n_of_nodes += 1
-        cost_new_near = calc_distance(q_new, q_near)    # find cost from q_new to q_near
+        cost_new_near = calc_distance(q_new, q_near)  # find cost from q_new to q_near
         best_edge = (id_new, id_near, cost_new_near)
-        G.cost[id_new] = cost_new_near                  # calculate cost for new node from nearest node
+        G.cost[id_new] = cost_new_near  # calculate cost for new node from nearest node
         G.parent[id_new] = id_near
 
-        find_best_node(G, q_new, id_new, best_edge, radius, obstacles)
+        choose_parent(G, q_new, id_new, best_edge, radius, obstacles)
         G.add_edge(*best_edge)
 
         # rewire
@@ -199,7 +217,7 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nod
 
         # delete random childless node if needed
         if n_of_nodes > max_nodes:
-            id_removed = delete_childless_node(G, id_new, best_path["path"])
+            id_removed = forced_removal(G, id_new, best_path["path"])
             if id_removed in finish_nodes_of_path:
                 finish_nodes_of_path.remove(id_removed)
             n_of_nodes -= 1
@@ -249,7 +267,8 @@ def RRT_STAR_FND(G: Graph, iter_num: int, map: Map, step_length: int, radius: fl
     :return: number of iterations
     """
     iter, best_path = RRT_star_FN(G=G, iter_num=iter_num, map=map, step_length=step_length,
-                radius=radius, node_radius=node_radius, max_nodes=max_nodes, bias=bias, live_update=live_update)
+                                  radius=radius, node_radius=node_radius, max_nodes=max_nodes, bias=bias,
+                                  live_update=live_update)
     p_current = G.start
     init_movement()
 
@@ -269,8 +288,9 @@ def select_branch(G: Graph, current_node: int, path: list, map: Map) -> list:
     """
     G.start = G.vertices[current_node]
     parent = G.parent[current_node]
-    G.parent[current_node] = None                           # set parent of current node to None
-    del G.children[parent][G.children[parent].index(current_node)]    # delete current node from previous parent's children
+    G.parent[current_node] = None  # set parent of current node to None
+    del G.children[parent][
+        G.children[parent].index(current_node)]  # delete current node from previous parent's children
 
     plt.figure()
     plot_graph(G, map.obstacles_c)
@@ -319,11 +339,11 @@ def valid_path(G: Graph, path: list, map: Map, previous_root: int) -> int:
     id_separate_root = previous_root
     nodes_in_path = [(id_node, G.vertices[id_node]) for id_node in path]
     for id_node, pos_node in reversed(nodes_in_path):
-        if map.is_occupied_c(pos_node):                 # if node that is in path collides with an obstacle, delete it
+        if map.is_occupied_c(pos_node):  # if node that is in path collides with an obstacle, delete it
             remove_children(G, id_node, path)
             id_remaining_child = G.children[id_node][0]  # the only remaining children of this node is in path
-            G.remove_vertex(id_node)                    # remove node that collides with an obstacle
-            G.parent[id_remaining_child] = None         # set the separate root node's parent to None
+            G.remove_vertex(id_node)  # remove node that collides with an obstacle
+            G.parent[id_remaining_child] = None  # set the separate root node's parent to None
             id_separate_root = id_remaining_child
 
             plt.pause(0.001)
@@ -333,7 +353,8 @@ def valid_path(G: Graph, path: list, map: Map, previous_root: int) -> int:
     return id_separate_root
 
 
-def reconnect(G: Graph, path: list, map: Map, step_size: float, id_root: int, id_separate_root: int, last_node: int) -> tuple:
+def reconnect(G: Graph, path: list, map: Map, step_size: float, id_root: int, id_separate_root: int,
+              last_node: int) -> tuple:
     """
 
     :param G: Graph
@@ -394,7 +415,8 @@ def get_near_nodes(G: Graph, node_to_check: int, radius: float, root_node: int) 
     :return: list of ids of nearby nodes
     """
     distances = get_distance_dict(G, node_to_check)
-    id_near_nodes = [id_ver for id_ver, cost in distances.items() if cost <= radius and check_for_tree_associativity(G, root_node, id_ver)]
+    id_near_nodes = [id_ver for id_ver, cost in distances.items() if
+                     cost <= radius and check_for_tree_associativity(G, root_node, id_ver)]
     # id_near_nodes = []
     # for id_ver, cost in distances.items():
     #     if cost <= radius:
@@ -411,9 +433,11 @@ def test_select_branch():
     NODE_RADIUS = 5
     step_length = 15
     my_map = Map((map_width, map_height), start, goal, NODE_RADIUS)
-    my_map.generate_obstacles(obstacle_count=15, size=7)
+    my_map.generate_obstacles(obstacle_count=45, size=7)
     G = Graph(start, goal, map_width, map_height)
-    iteration, best_path = RRT_star(G, iter_num=500, map=my_map, step_length=step_length, radius=15, node_radius=NODE_RADIUS, bias=0)
+    # iteration, best_path = RRT_star(G, iter_num=500, map=my_map, step_length=step_length, radius=15, node_radius=NODE_RADIUS, bias=0)
+    iteration, best_path = RRT_star_FN(G, iter_num=500, map=my_map, step_length=step_length, radius=15,
+                                       node_radius=NODE_RADIUS, max_nodes=30, bias=0)
 
     plot_graph(G, my_map.obstacles_c)
     plt.pause(0.001)
@@ -421,10 +445,12 @@ def test_select_branch():
     last_node = best_path["path"][0]
 
     id_to_remove = list(reversed(best_path["path"]))[4]
+
     best_path["path"] = select_branch(G, id_to_remove, best_path["path"], my_map)
 
     my_map.add_obstacles([[G.vertices[best_path["path"][6]], 7]])
     my_map.add_obstacles([[G.vertices[best_path["path"][7]], 7]])
+
     plt.figure()
     plot_graph(G, my_map.obstacles_c)
     plt.show()
@@ -438,7 +464,7 @@ def test_select_branch():
 
     root_node = G.id_vertex[G.start]
     # check_for_tree_associativity(G, id_separate_root, G.children[G.children[id_separate_root][0]][0])
-    ret_value = reconnect(G, best_path["path"], my_map, step_length, root_node, id_separate_root, last_node)
+    ret_value = reconnect(G, best_path["path"], my_map, step_length*5, root_node, id_separate_root, last_node)
     if ret_value is None:
         regrow(G=G, map=my_map, step_length=step_length, radius=step_length, id_root=root_node,
                id_separate_root=id_separate_root, last_node=last_node, bias=0.02)
@@ -458,7 +484,7 @@ def regrow(G: Graph, map: Map, step_length: float, radius: float, id_root: int,
         if map.is_occupied_c(q_rand): continue  # if it's generated on an obstacle, continue
         q_near, id_near = nearest_node(G, q_rand, obstacles, separate_tree)  # find the nearest to the random node
         if q_near is None or q_rand == q_near: continue  # random node cannot be connected to nearest without obstacle
-        q_new = new_node(q_rand, q_near, step_length)  # get position of the new node
+        q_new = steer(q_rand, q_near, step_length)  # get position of the new node
         if map.is_occupied_c(q_new): continue
         id_new = G.add_vertex(q_new)  # get id of the new node
         n_of_nodes += 1
@@ -467,12 +493,12 @@ def regrow(G: Graph, map: Map, step_length: float, radius: float, id_root: int,
         G.cost[id_new] = cost_new_near  # calculate cost for new node from nearest node
         G.parent[id_new] = id_near
 
-        find_best_node(G, q_new, id_new, best_edge, radius, obstacles, separate_tree)
+        choose_parent(G, q_new, id_new, best_edge, radius, obstacles, separate_tree)
         G.add_edge(*best_edge)
 
         iter += 1
 
-        for node in separate_tree:      # try to reconnect root tree with separate tree
+        for node in separate_tree:  # try to reconnect root tree with separate tree
             line = Line(q_new, G.vertices[node])
             if through_obstacle(line, obstacles): continue
             if calc_distance(q_new, G.vertices[node]) < step_length:
@@ -531,13 +557,13 @@ def intersection_circle(line: Line, circle: list) -> bool:
         else:
             return False
     delta, a, b = calc_delta(line, circle)
-    if delta < 0:   # no real solutions
+    if delta < 0:  # no real solutions
         return False
     ip1, ip2 = delta_solutions(delta, a, b)  # intersection point 1's x; intersection point 2's x
     ip1[1] = line.calculate_y(ip1[0])
     ip2[1] = line.calculate_y(ip2[0])
-    if (ip1[0] < 0 and ip2[0] < 0) or (ip1[1] < 0 and ip2[1] < 0):  # outside the map
-        return False
+    # if (ip1[0] < 0 and ip2[0] < 0) or (ip1[1] < 0 and ip2[1] < 0):  # outside the map
+    #     return False
     if is_between(ip1, p1, p2) or is_between(ip2, p1, p2):
         return True
     return False
@@ -564,8 +590,8 @@ def delta_solutions(delta: float, a: float, b: float) -> tuple:
     :param b: coefficient of x
     :return: two solutions, x1 and x2
     """
-    x1 = [(-b + delta**0.5) / (2 * a), None]
-    x2 = [(-b - delta**0.5) / (2 * a), None]
+    x1 = [(-b + delta ** 0.5) / (2 * a), None]
+    x2 = [(-b - delta ** 0.5) / (2 * a), None]
     return x1, x2
 
 
@@ -578,8 +604,8 @@ def calc_delta(line: Line, circle: list) -> tuple:
     """
     x0 = circle[0][0]  # circle's center x coordinate
     y0 = circle[0][1]  # circle's center y coordinate
-    r = circle[1]      # circle's radius
-    a = (1 + line.dir**2)
+    r = circle[1]  # circle's radius
+    a = (1 + line.dir ** 2)
     b = 2 * (-x0 + line.dir * line.const_term - line.dir * y0)
     c = -r ** 2 + x0 ** 2 + y0 ** 2 - 2 * y0 * line.const_term + line.const_term ** 2
     delta = b ** 2 - 4 * a * c
@@ -609,7 +635,7 @@ def plot_graph(graph: Graph, obstacles: list):
     xes = [pos[0] for id, pos in graph.vertices.items()]
     yes = [pos[1] for id, pos in graph.vertices.items()]
 
-    plt.scatter(xes, yes, c='gray')   # plotting nodes
+    plt.scatter(xes, yes, c='gray')  # plotting nodes
     plt.scatter(graph.start[0], graph.start[1], c='#49ab1f', s=50)
     plt.scatter(graph.goal[0], graph.goal[1], c='red', s=50)
 
@@ -632,7 +658,7 @@ def nearest_node(graph: Graph, vertex: tuple, obstacles: list, separate_tree_nod
     """
     Checks for the nearest node to the input node, check for crossing obstacles.
      :param graph: Graph
-     :param vertex: position of the vertex
+     :param vertex: position of the vertex which neighbors are being sought for
      :param obstacles: list of obstacles
      :param separate_tree_nodes: list of nodes that are in the separate tree
      :return: new_vertex, new_id
@@ -644,6 +670,11 @@ def nearest_node(graph: Graph, vertex: tuple, obstacles: list, separate_tree_nod
         min_distance = float("inf")
         new_id = None
         new_vertex = None
+        # closest_id = None
+        # closest_pos = None
+        # d, i = kdtree.query(vertex, k=1)
+        # closest_pos = kdtree.data[i]
+        # closest_id = graph.id_vertex(closest_pos)
         for ver_id, ver in graph.vertices.items():
             if ver_id in separate_tree_nodes: continue
             line = Line(ver, vertex)
@@ -657,7 +688,7 @@ def nearest_node(graph: Graph, vertex: tuple, obstacles: list, separate_tree_nod
         return new_vertex, new_id
 
 
-def new_node(to_vertex: tuple, from_vertex: tuple, max_length: float) -> tuple:
+def steer(to_vertex: tuple, from_vertex: tuple, max_length: float) -> tuple:
     """
     Return position of new node. from_vertex -> to_vertex, of given length.
     :param to_vertex: position of vertex that marks the direction
@@ -726,24 +757,30 @@ def find_path(G: Graph, from_node: int, root_node: int) -> tuple:
     return path, cost
 
 
-def delete_childless_node(G: Graph, id_new: int, path: list) -> int:
+def forced_removal(G: Graph, id_new: int, path: list) -> int:
     """
     Delete random childless node from the graph.
     :param G: Graph
     :param id_new: id of node that won't be deleted
-    :param path: list of ids in the path
+    :param path: list of ids of the nodes in path
     :return: id of node that has been deleted
     """
-    childless_nodes = [node for node, children in G.children.items() if len(children) == 0] # and node != id_new
+    id_last_in_path = -1
+    if path:
+        id_last_in_path = path[0]
+
+    childless_nodes = [node for node, children in G.children.items() if len(children) == 0]  # and node != id_new
     id_ver = random.choice(childless_nodes)
-    while id_ver in path or id_ver == id_new:
+
+    while id_ver == id_new or id_ver == id_last_in_path:
         id_ver = random.choice(childless_nodes)
     G.remove_vertex(id_ver)
+
     return id_ver
 
 
-def find_best_node(G: Graph, q_new: tuple, id_new: int, best_edge: tuple,
-                   radius: float, obstacles: list, separate_tree_nodes: list = ()) -> tuple:
+def choose_parent(G: Graph, q_new: tuple, id_new: int, best_edge: tuple,
+                  radius: float, obstacles: list, separate_tree_nodes: list = ()) -> tuple:
     """
     Find a node that is optimal in terms of cost to the start node.
     :param G: Graph

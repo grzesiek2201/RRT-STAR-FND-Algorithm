@@ -5,10 +5,12 @@ class Line:
     def __init__(self, p1: tuple, p2: tuple):
         self.p1 = np.array(p1)
         self.p2 = np.array(p2)
-        self.norm = np.linalg.norm(self.p1 - self.p2)
+        self.norm = np.linalg.norm(self.p2 - self.p1)
         if p2[0] == p1[0]:
             self.dir = float("inf")
             self.x_pos = p1[0]
+            self.const_term = None
+            return
         else:
             self.dir = (p2[1] - p1[1]) / (p2[0] - p1[0])
         self.const_term = self.p1[1] - self.dir * self.p1[0]

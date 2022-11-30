@@ -10,9 +10,9 @@ class Map:
         :param start: position of start node
         :param goal: position of goal node
         """
-        if (start[0] or goal[0]) > size[0] or (start[0] or goal[0]) < 0 or \
-                (start[1] or goal[1]) > size[1] or (start[1] or goal[1]) < 0:
-            raise Exception("Start or goal point out of bounds.")
+        # if (start[0] or goal[0]) > size[0] or (start[0] or goal[0]) < 0 or \
+        #         (start[1] or goal[1]) > size[1] or (start[1] or goal[1]) < 0:
+        #     raise Exception("Start or goal point out of bounds.")
 
         self.obstacles_c = []  # list of obstacles' position and radius (circles)
         self.obstacles_r = []  # list of obstacles' upper-left and lower-right position (rectangles)

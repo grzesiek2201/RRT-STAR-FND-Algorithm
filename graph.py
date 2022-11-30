@@ -6,21 +6,22 @@ class OutOfBoundsException(Exception):
 
 
 class Graph:
-    def __init__(self, start: tuple, goal: tuple, width: int, height: int):
+    def __init__(self, start: tuple, goal: tuple, width: int, height: int, xy_range: list):
         """
         :param start:
         :param goal:
         :param width:
         :param height:
         """
-        if (start[0] or goal[0]) > width or (start[0] or goal[0]) < 0 or \
-                (start[1] or goal[1]) > height or (start[1] or goal[1]) < 0:
-            raise OutOfBoundsException()
+        # if (start[0] or goal[0]) > width or (start[0] or goal[0]) < 0 or \
+        #         (start[1] or goal[1]) > height or (start[1] or goal[1]) < 0:
+        #     raise OutOfBoundsException()
 
         self.start = start  # start position
         self.goal = goal  # goal position
-        self.width = width
-        self.height = height
+        self.width = xy_range[0][1] - xy_range[0][0]
+        self.height = xy_range[1][1] - xy_range[1][0]
+        self.xy_range = xy_range
 
         self.parent = {0: None}
         self.children = {0: []}
@@ -96,5 +97,5 @@ class Graph:
         """
         if random.random() < bias:
             return self.goal
-        return random.randint(2, self.width), random.randint(2, self.height)
+        return random.randint(self.xy_range[0][0], self.xy_range[0][1]), random.randint(self.xy_range[1][0], self.xy_range[1][1])
 
