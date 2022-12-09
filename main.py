@@ -94,21 +94,21 @@ if __name__ == '__main__':
     # print(f"RRT algorithm stopped at iteration number: {iteration}")
     # plt.show()
 
-    G = Graph(start_node, goal_node, map_width, map_height, xy_range)
-    iteration, _ = RRT_star(G, iter_num=1000, map=my_map, step_length=25, radius=30, node_radius=NODE_RADIUS, bias=0)
-    print(f"RRT_star algorithm stopped at iteration number: {iteration}")
-    plot_graph(G, my_map.obstacles_c, xy_range)
-    plt.show()
-
-    # try:
-    #     G = Graph(start_node, goal_node, map_width, map_height, xy_range)
-    #     iteration, _ = RRT_star_FN(G, iter_num=5000, map=my_map, step_length=25,
-    #                                radius=40, node_radius=NODE_RADIUS, max_nodes=50, bias=0.0, live_update=False)
-    # except OutOfBoundsException as e:
-    #     pass
-    # print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
+    # G = Graph(start_node, goal_node, map_width, map_height, xy_range)
+    # iteration, _ = RRT_star(G, iter_num=500, map=my_map, step_length=25, radius=70, node_radius=NODE_RADIUS, bias=0.01)
+    # print(f"RRT_star algorithm stopped at iteration number: {iteration}")
     # plot_graph(G, my_map.obstacles_c, xy_range)
     # plt.show()
+
+    try:
+        G = Graph(start_node, goal_node, map_width, map_height, xy_range)
+        iteration, _ = RRT_star_FN(G, iter_num=2000, map=my_map, step_length=35,
+                                   radius=50, node_radius=NODE_RADIUS, max_nodes=50, bias=0.0, live_update=False)
+    except OutOfBoundsException as e:
+        pass
+    print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
+    plot_graph(G, my_map.obstacles_c, xy_range)
+    plt.show()
 
     # test_select_branch()
 
