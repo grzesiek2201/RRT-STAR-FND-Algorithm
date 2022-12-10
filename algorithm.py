@@ -9,7 +9,7 @@ from graph import Graph
 from map import Map
 from line import Line
 
-from scipy.spatial import KDTree
+from scipy.spatial import KDTree, cKDTree
 
 
 def time_function(func):
@@ -33,8 +33,26 @@ def time_function(func):
     return wrapper
 
 
+def new_node(G: Graph, map: Map, obstacles: list, step_length: float, bias: float):
+
+    q_rand = G.random_node(bias=bias)  # generate a new random node
+    if map.is_occupied_c(q_rand):  # if new node's position is in an obstacle
+        return None, None, None, None
+    potential_vertices_list = list(G.vertices.values())
+    kdtree = cKDTree(
+        np.array(potential_vertices_list))  # create KDtree (2Dtree) and pass it to nearest_node function
+    q_near, id_near = nearest_node_kdtree(G, q_rand, obstacles, kdtree=kdtree)
+    if q_near is None or (q_rand == q_near).all():  # random node cannot be connected to nearest without obstacle
+        return None, None, None, None
+    q_new = steer(q_rand, q_near, step_length)
+    id_new = G.add_vertex(q_new)
+    distance = calc_distance(q_new, q_near)
+
+    return q_new, id_new, id_near, distance
+
+
 @time_function
-def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int, bias: float = .0):
+def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int, bias: float = .0, live_update: bool = False):
     """
     RRT algorithm.
     :param G: Graph
@@ -43,6 +61,7 @@ def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int,
     :param step_length: maximum allowed length of the edge between two nodes
     :param node_radius: radius of a node
     :param bias: 0-1, bias towards goal node
+    :param live_update: bool, if algorithm is to be updated live on plot
     :return: number of iterations
     """
     pbar = tqdm(total=iter_num)
@@ -50,18 +69,11 @@ def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int,
 
     iter = 0
     while iter < iter_num:
-        q_rand = G.random_node(bias=bias)  # generate a new random node
-        if map.is_occupied_c(q_rand):  # if new node's position is in an obstacle
+
+        q_new, id_new, id_near, distance = new_node(G, map, obstacles, step_length, bias)
+        if q_new is None:
             continue
-        q_near, id_near = nearest_node(G, q_rand, obstacles)  # search for the nearest node
-        if q_near is None or q_rand == q_near:  # random node cannot be connected to nearest without obstacle
-            continue
-        q_new = steer(q_rand, q_near, step_length)
-        id_new = G.add_vertex(q_new)
-        distance = calc_distance(q_new, q_near)
         G.add_edge(id_new, id_near, distance)
-        # plot_graph(G, map.obstacles_c)
-        # plt.show()
 
         if check_solution(G, q_new, node_radius):
             path, cost = find_path(G, id_new, G.id_vertex[G.start])
@@ -71,11 +83,12 @@ def RRT(G: Graph, iter_num: int, map: Map, step_length: float, node_radius: int,
         pbar.update(1)
         iter += 1
 
-        # plt.pause(0.001)
-        # plt.clf()
-        # plot_graph(G, map.obstacles_c)
-        # plt.xlim((-200, 200))
-        # plt.ylim((-200, 200))
+        if live_update:
+            plt.pause(0.001)
+            plt.clf()
+            plot_graph(G, map.obstacles_c)
+            plt.xlim((-200, 200))
+            plt.ylim((-200, 200))
 
     pbar.close()
     return iter
@@ -103,32 +116,40 @@ def RRT_star(G, iter_num, map, step_length, radius, node_radius: int, bias=.0, l
     finish_nodes_of_path = []  # ids of nodes that are the last nodes in found paths
     iter = 0
     while iter < iter_num:
-        q_rand = G.random_node(bias=bias)  # generate random node
-        if map.is_occupied_c(q_rand):  # if it's generated on an obstacle, continue
+        # q_rand = G.random_node(bias=bias)  # generate random node
+        # if map.is_occupied_c(q_rand):  # if it's generated on an obstacle, continue
+        #     continue
+        #
+        # kdtree = cKDTree(
+        #     np.array(list(G.vertices.values())))  # create KDtree (2Dtree) and pass it to nearest_node function
+        # q_near, id_near = nearest_node_kdtree(G, q_rand, obstacles, kdtree=kdtree)
+        # if q_near is None or (q_rand == q_near).all():  # random node cannot be connected to nearest without obstacle
+        #     continue
+        # q_near, id_near = nearest_node(G, q_rand,
+        #                                obstacles)  # find the nearest to the random node; change function to also include radius?
+        # if q_near is None or q_rand == q_near:  # random node cannot be connected to nearest without obstacle
+        #     continue
+
+        # q_new = steer(q_rand, q_near, step_length)  # get position of the new node
+        # # if map.is_occupied_c(q_new): continue
+        # id_new = G.add_vertex(q_new)  # get id of the new node
+        # cost_new_near = calc_distance(q_new, q_near)  # find cost from q_new to q_near
+        q_new, id_new, id_near, cost_new_near = new_node(G, map, obstacles, step_length, bias)
+        if q_new is None:
             continue
-        # potential_vertices_list = list(G.vertices.values())
-        # potential_vertices_list.append(q_rand)
-        # kdtree = KDTree(np.array(potential_vertices_list))  # create KDtree (2Dtree) and pass it to nearest_node function
-        q_near, id_near = nearest_node(G, q_rand,
-                                       obstacles)  # find the nearest to the random node; change function to also include radius?
-        if q_near is None or q_rand == q_near:  # random node cannot be connected to nearest without obstacle
-            continue
-        q_new = steer(q_rand, q_near, step_length)  # get position of the new node
-        if map.is_occupied_c(q_new): continue
-        id_new = G.add_vertex(q_new)  # get id of the new node
-        cost_new_near = calc_distance(q_new, q_near)  # find cost from q_new to q_near
         best_edge = (id_new, id_near, cost_new_near)
         G.cost[id_new] = cost_new_near  # calculate cost for new node from nearest node
         G.parent[id_new] = id_near
 
-        # chose_parent function should only search through the found subset of the nearest nodes!!!
-        choose_parent(G, q_new, id_new, best_edge, radius, obstacles)
+        # KDTree performs better than brute-force
+        kdtree = cKDTree(list(G.vertices.values()))
+        choose_parent_kdtree(G, q_new, id_new, best_edge, radius, obstacles, kdtree=kdtree)
+        # choose_parent(G, q_new, id_new, best_edge, radius, obstacles)
         G.add_edge(*best_edge)
 
-
-        # create a new 2Dtree? not sure
         # rewire
-        rewire(G, q_new, id_new, radius, obstacles)
+        rewire_kdtree(G, q_new, id_new, radius, obstacles, kdtree=kdtree)
+        # rewire(G, q_new, id_new, radius, obstacles)
 
         # check for solution
         if check_solution(G, q_new, node_radius):
@@ -181,8 +202,6 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nod
     :param live_update: live presentation of the algorithm on plot
     :return: number of iterations
     """
-    # plot_graph(G, map.obstacles_c)
-    # plt.pause(3)
 
     pbar = tqdm(total=iter_num)
     obstacles = map.obstacles_c
@@ -193,27 +212,22 @@ def RRT_star_FN(G, iter_num, map, step_length, radius, node_radius: int, max_nod
     finish_nodes_of_path = []  # ids of nodes that are the last nodes in found paths
     iter = 0
     while iter < iter_num:
-        q_rand = G.random_node(bias=bias)  # generate random node
-        if map.is_occupied_c(q_rand):  # if it's generated on an obstacle, continue
+        q_new, id_new, id_near, cost_new_near = new_node(G, map, obstacles, step_length, bias)
+        if q_new is None:
             continue
-        q_near, id_near = nearest_node(G, q_rand,
-                                       obstacles)  # find the nearest to the random node; change function to also include radius?
-        if q_near is None or q_rand == q_near:  # random node cannot be connected to nearest without obstacle
-            continue
-        q_new = steer(q_rand, q_near, step_length)  # get position of the new node
-        if map.is_occupied_c(q_new): continue
-        id_new = G.add_vertex(q_new)  # get id of the new node
-        n_of_nodes += 1
-        cost_new_near = calc_distance(q_new, q_near)  # find cost from q_new to q_near
         best_edge = (id_new, id_near, cost_new_near)
         G.cost[id_new] = cost_new_near  # calculate cost for new node from nearest node
         G.parent[id_new] = id_near
+        n_of_nodes += 1
 
-        choose_parent(G, q_new, id_new, best_edge, radius, obstacles)
+        kdtree = cKDTree(list(G.vertices.values()))
+        choose_parent_kdtree(G, q_new, id_new, best_edge, radius, obstacles, kdtree=kdtree)
+        # choose_parent(G, q_new, id_new, best_edge, radius, obstacles)
         G.add_edge(*best_edge)
 
         # rewire
-        rewire(G, q_new, id_new, radius, obstacles)
+        rewire_kdtree(G, q_new, id_new, radius, obstacles, kdtree=kdtree)
+        # rewire(G, q_new, id_new, radius, obstacles)
 
         # delete random childless node if needed
         if n_of_nodes > max_nodes:
@@ -417,11 +431,6 @@ def get_near_nodes(G: Graph, node_to_check: int, radius: float, root_node: int) 
     distances = get_distance_dict(G, node_to_check)
     id_near_nodes = [id_ver for id_ver, cost in distances.items() if
                      cost <= radius and check_for_tree_associativity(G, root_node, id_ver)]
-    # id_near_nodes = []
-    # for id_ver, cost in distances.items():
-    #     if cost <= radius:
-    #         if check_for_tree_associativity(G, root_node, id_ver):
-    #             id_near_nodes.append(id_ver)
     return id_near_nodes
 
 
@@ -654,28 +663,59 @@ def plot_graph(graph: Graph, obstacles: list):
     plt.ylim(0, graph.height)
 
 
-def nearest_node(graph: Graph, vertex: tuple, obstacles: list, separate_tree_nodes: list = ()):
+def nearest_node_kdtree(G: Graph, vertex: tuple, obstacles: list, separate_tree_nodes: list = (), kdtree: cKDTree = None):
     """
     Checks for the nearest node to the input node, check for crossing obstacles.
-     :param graph: Graph
+     :param G: Graph
+     :param vertex: position of the vertex which neighbors are being sought for
+     :param obstacles: list of obstacles
+     :param separate_tree_nodes: list of nodes that are in the separate tree
+     :param kdtree: kdtree create from all the nodes besides the new one
+     :return: new_vertex, new_id
+     """
+    try:
+        id = G.id_vertex[vertex]
+        return np.array(vertex), id
+    except KeyError:
+        closest_id = None
+        closest_pos = None
+        nn = 1
+        while True:
+            d, i = kdtree.query(vertex, k=nn, workers=-1)
+            if nn == 1:
+                closest_pos = kdtree.data[i]
+            else:
+                closest_pos = kdtree.data[i[-1]]
+            closest_id = G.id_vertex[closest_pos[0], closest_pos[1]]
+            line = Line(vertex, closest_pos)
+            nn += 1
+            if not through_obstacle(line, obstacles):
+                break
+            elif nn > len(G.vertices):
+                closest_pos = np.array(vertex)
+                closest_id = None
+                break
+
+        return closest_pos, closest_id
+
+
+def nearest_node(G: Graph, vertex: tuple, obstacles: list, separate_tree_nodes: list = ()):
+    """
+    Checks for the nearest node to the input node, check for crossing obstacles.
+     :param G: Graph
      :param vertex: position of the vertex which neighbors are being sought for
      :param obstacles: list of obstacles
      :param separate_tree_nodes: list of nodes that are in the separate tree
      :return: new_vertex, new_id
      """
     try:
-        id = graph.id_vertex[vertex]
+        id = G.id_vertex[vertex]
         return vertex, id
     except KeyError:
         min_distance = float("inf")
         new_id = None
         new_vertex = None
-        # closest_id = None
-        # closest_pos = None
-        # d, i = kdtree.query(vertex, k=1)
-        # closest_pos = kdtree.data[i]
-        # closest_id = graph.id_vertex(closest_pos)
-        for ver_id, ver in graph.vertices.items():
+        for ver_id, ver in G.vertices.items():
             if ver_id in separate_tree_nodes: continue
             line = Line(ver, vertex)
             if through_obstacle(line, obstacles): continue
@@ -779,6 +819,39 @@ def forced_removal(G: Graph, id_new: int, path: list) -> int:
     return id_ver
 
 
+def choose_parent_kdtree(G: Graph, q_new: tuple, id_new: int, best_edge: tuple,
+                         radius: float, obstacles: list, separate_tree_nodes: list = (), kdtree: cKDTree = None) -> tuple:
+    """
+    Find a node that is optimal in terms of cost to the start node.
+    :param G: Graph
+    :param q_new: position of new node
+    :param id_new: id of new node
+    :param best_edge: best edge so far
+    :param radius: radius of search area
+    :param obstacles: list of obstacles
+    :param separate_tree_nodes: list if ids of nodes that are in the separate tree
+    :param kdtree: kdtree create from all the nodes besides the new one
+    :return: id of best node
+    """
+
+    i = kdtree.query_ball_point(q_new, r=radius, workers=-1)
+
+    in_radius_pos = kdtree.data[i]                                                            # pos of point in radius
+    in_radius_ids = [G.id_vertex[pos[0], pos[1]] for pos in in_radius_pos]  # id of points in radius
+
+    costs = np.linalg.norm(in_radius_pos - q_new, axis=1)
+    # new_costs = [G.get_cost(id_in_radius) + costs[] for id_in_radius in in_radius_ids]
+
+    for id_ver, vertex, cost in zip(in_radius_ids, in_radius_pos, costs):
+        line = Line(vertex, q_new)
+        if through_obstacle(line, obstacles): continue
+        if G.get_cost(id_new) > G.get_cost(id_ver) + cost:
+            G.cost[id_new] = cost
+            best_edge = (id_new, id_ver, cost)
+
+    return best_edge
+
+
 def choose_parent(G: Graph, q_new: tuple, id_new: int, best_edge: tuple,
                   radius: float, obstacles: list, separate_tree_nodes: list = ()) -> tuple:
     """
@@ -792,31 +865,49 @@ def choose_parent(G: Graph, q_new: tuple, id_new: int, best_edge: tuple,
     :param separate_tree_nodes: list if ids of nodes that are in the separate tree
     :return: id of best node
     """
-    costs = get_distance_dict(G, id_new)
 
-    for id_and_vertex, id_and_cost in zip(G.vertices.items(), costs.items()):
-        # print(f"{id_and_vertex[0]}: {id_and_vertex[1]}, {id_and_cost[1]}")
-        if id_and_vertex[0] in separate_tree_nodes: continue
-        if id_and_vertex[0] == id_new: continue
-        distance_new_vert = id_and_cost[1]
-        if distance_new_vert > radius: continue
-        line = Line(id_and_vertex[1], q_new)
-        if through_obstacle(line, obstacles): continue
-        if G.get_cost(id_new) < G.get_cost(id_and_vertex[0]) + distance_new_vert:
-            G.cost[id_new] = distance_new_vert
-            best_edge = (id_new, id_and_vertex[0], distance_new_vert)
-
-    # for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
-    #     if id_ver == id_new: continue
-    #     distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
-    #     if distance_new_vert > radius: continue  # if distance is greater than search radius - continue
-    #     line = Line(vertex, q_new)  # create Line object from new node to vertex
-    #     if through_obstacle(line, obstacles): continue  # if the line goes through obstacle - continue
-    #     if G.get_cost(id_new) > G.get_cost(id_ver) + distance_new_vert:  # if cost from new node to vertex is smaller
-    #         G.cost[id_new] = distance_new_vert  # than current cost, rewire the vertex to new
-    #         best_edge = (id_new, id_ver, distance_new_vert)
+    for id_ver, vertex in G.vertices.items():  # iterate through all the vertices
+        if id_ver == id_new: continue
+        distance_new_vert = calc_distance(q_new, vertex)  # calculate distance between new node and vertex node
+        if round(distance_new_vert, 3) > radius: continue  # if distance is greater than search radius - continue
+        line = Line(vertex, q_new)  # create Line object from new node to vertex
+        if through_obstacle(line, obstacles): continue  # if the line goes through obstacle - continue
+        if G.get_cost(id_new) > G.get_cost(id_ver) + distance_new_vert:  # if cost from new node to vertex is smaller
+            G.cost[id_new] = distance_new_vert  # than current cost, rewire the vertex to new
+            best_edge = (id_new, id_ver, distance_new_vert)
 
     return best_edge
+
+
+def rewire_kdtree(G: Graph, q_new: tuple, id_new: int, radius: float, obstacles: list, kdtree: cKDTree = None):
+    """
+    Rewire procedure of the RRT_STAR algorithm.
+    :param G: Graph
+    :param q_new: position of new node
+    :param id_new: id of new node
+    :param radius: radius of search area
+    :param obstacles: list of obstacles
+    :param kdtree: kdtree create from all the nodes besides the new one
+    """
+
+    i = kdtree.query_ball_point(q_new, r=radius, workers=-1)
+    # calc_distances between new node and nodes in radius
+
+    in_radius_pos = kdtree.data[i]                                                            # pos of point in radius
+    in_radius_ids = [G.id_vertex[pos[0], pos[1]] for pos in in_radius_pos]  # id of points in radius
+
+    costs = np.linalg.norm(in_radius_pos - q_new, axis=1)
+    # new_costs = [G.get_cost(id_in_radius) + costs[] for id_in_radius in in_radius_ids]
+
+    for id_ver, vertex, cost in zip(in_radius_ids, in_radius_pos, costs):
+        line = Line(vertex, q_new)
+        if through_obstacle(line, obstacles): continue
+        if G.get_cost(id_ver) > G.get_cost(id_new) + cost:
+            parent = G.parent[id_ver]  # parent of the rewired node
+            del G.children[parent][G.children[parent].index(id_ver)]  # delete rewired node from it's parent children
+            G.parent[id_ver] = id_new  # set rewired node's parent to new node
+            G.children[id_new].append(id_ver)  # append rewired node to new node's children
+            G.cost[id_ver] = cost
 
 
 def rewire(G: Graph, q_new: tuple, id_new: int, radius: float, obstacles: list):
@@ -829,45 +920,22 @@ def rewire(G: Graph, q_new: tuple, id_new: int, radius: float, obstacles: list):
     :param obstacles: list of obstacles
     """
 
-    costs = get_distance_dict(G, id_new)
-
-    for id_and_vertex, id_and_cost in zip(G.vertices.items(), costs.items()):
-        id_ver = id_and_vertex[0]
-        vertex = id_and_vertex[1]
-        distance_new_vert = id_and_cost[1]
-
-        if distance_new_vert > radius: continue
+    for id_ver, vertex in G.vertices.items():
         if id_ver == G.id_vertex[G.start]: continue
         if id_ver == id_new: continue
+        distance_new_vert = calc_distance(q_new, vertex)
+        if distance_new_vert > radius: continue
         line = Line(vertex, q_new)
         if through_obstacle(line, obstacles): continue
         if G.get_cost(id_ver) > G.get_cost(id_new) + distance_new_vert:
-            parent = G.parent[id_ver]  # parent of the rewired node
+            parent = G.parent[id_ver]           # parent of the rewired node
             del G.children[parent][G.children[parent].index(id_ver)]  # delete rewired node from it's parent children
-            G.parent[id_ver] = id_new  # set rewired node's parent to new node
-            G.children[id_new].append(id_ver)  # append rewired node to new node's children
+            G.parent[id_ver] = id_new           # set rewired node's parent to new node
+            G.children[id_new].append(id_ver)   # append rewired node to new node's children
             G.cost[id_ver] = distance_new_vert
 
-    # for id_ver, vertex in G.vertices.items():
-    #     if id_ver == G.id_vertex[G.start]: continue
-    #     if id_ver == id_new: continue
-    #     distance_new_vert = calc_distance(q_new, vertex)
-    #     if distance_new_vert > radius: continue
-    #     line = Line(vertex, q_new)
-    #     if through_obstacle(line, obstacles): continue
-    #     # if G.cost[id_new] + distance_new_vert < G.cost[id_ver]:
-    #     if G.get_cost(id_ver) > G.get_cost(id_new) + distance_new_vert:
-    #         parent = G.parent[id_ver]           # parent of the rewired node
-    #         del G.children[parent][G.children[parent].index(id_ver)]  # delete rewired node from it's parent children
-    #         G.parent[id_ver] = id_new           # set rewired node's parent to new node
-    #         G.children[id_new].append(id_ver)   # append rewired node to new node's children
-    #         # saved_cost = G.cost[id_ver] - (G.cost[id_new] + distance_new_vert)
-    #         # G.cost[id_ver] = G.cost[id_new] + distance_new_vert
-    #         G.cost[id_ver] = distance_new_vert
-    #         # update_cost(G, id_ver, saved_cost)
 
-
-def get_distance_dict(G: Graph, node_to_check: int) -> dict:
+def get_distance_dict(G: Graph, node_to_check: int, indeces_to_check: list[int]) -> dict:
     pos = G.vertices[node_to_check]
     tree_points_list = [vertex for id_ver, vertex in G.vertices.items()]
 
