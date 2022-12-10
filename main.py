@@ -14,7 +14,7 @@ from algorithm import test_select_branch
 
 from sdf_reader import SDFReader
 
-NODE_RADIUS = 7
+NODE_RADIUS = 20
 
 warnings.filterwarnings("error")
 
@@ -88,25 +88,25 @@ if __name__ == '__main__':
     # iteration = None
     # G = None
 
-    # G = Graph(start_node, goal_node, map_width, map_height, xy_range)
-    # iteration = RRT(G, iter_num=500, map=my_map, step_length=25, node_radius=NODE_RADIUS, bias=0)
-    # plot_graph(G, my_map.obstacles_c, xy_range)
-    # print(f"RRT algorithm stopped at iteration number: {iteration}")
-    # plt.show()
+    G = Graph(start_node, goal_node, map_width, map_height, xy_range)
+    iteration = RRT(G, iter_num=500, map=my_map, step_length=25, node_radius=NODE_RADIUS, bias=0)
+    plot_graph(G, my_map.obstacles_c, xy_range)
+    print(f"RRT algorithm stopped at iteration number: {iteration}")
+    plt.show()
 
-    # G = Graph(start_node, goal_node, map_width, map_height, xy_range)
-    # iteration, _ = RRT_star(G, iter_num=500, map=my_map, step_length=25, radius=70, node_radius=NODE_RADIUS, bias=0.01)
-    # print(f"RRT_star algorithm stopped at iteration number: {iteration}")
-    # plot_graph(G, my_map.obstacles_c, xy_range)
-    # plt.show()
+    G = Graph(start_node, goal_node, map_width, map_height, xy_range)
+    iteration, _ = RRT_star(G, iter_num=500, map=my_map, step_length=25, radius=50, node_radius=NODE_RADIUS, bias=0.01)
+    print(f"RRT_star algorithm stopped at iteration number: {iteration}")
+    plot_graph(G, my_map.obstacles_c, xy_range)
+    plt.show()
 
-    try:
-        G = Graph(start_node, goal_node, map_width, map_height, xy_range)
-        iteration, _ = RRT_star_FN(G, iter_num=2000, map=my_map, step_length=35,
-                                   radius=50, node_radius=NODE_RADIUS, max_nodes=50, bias=0.0, live_update=False)
-    except OutOfBoundsException as e:
-        pass
-    print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
+    # try:
+    G = Graph(start_node, goal_node, map_width, map_height, xy_range)
+    iteration, _ = RRT_star_FN(G, iter_num=2000, map=my_map, step_length=35,
+                               radius=50, node_radius=NODE_RADIUS, max_nodes=50, bias=0.01 , live_update=False)
+    # except OutOfBoundsException as e:
+    #     pass
+    # print(f"RRT_star_FN algorithm stopped at iteration number: {iteration}")
     plot_graph(G, my_map.obstacles_c, xy_range)
     plt.show()
 
