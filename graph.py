@@ -59,8 +59,6 @@ class Graph:
             self.vertices[id_vertex] = pos          # add new vertex to vertices list
             self.id_vertex[pos] = id_vertex         # add new vertex's id
             self.children[id_vertex] = []           # add new vertex's children list
-            # self.parent[id_vertex] = None         # not sure if initialization needed
-            # self.cost[id_vertex] = float("inf")   # not sure if initialization needed
         return id_vertex
 
     def remove_vertex(self, id: int):
@@ -97,5 +95,5 @@ class Graph:
         """
         if random.random() < bias:
             return self.goal
-        return random.randint(self.xy_range[0][0], self.xy_range[0][1]), random.randint(self.xy_range[1][0], self.xy_range[1][1])
+        return random.uniform(self.xy_range[0][0], self.xy_range[0][1]), random.uniform(self.xy_range[1][0], self.xy_range[1][1])
 

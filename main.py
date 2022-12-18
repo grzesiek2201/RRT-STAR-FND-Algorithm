@@ -56,15 +56,15 @@ def plot_graph(graph: Graph, obstacles: list, xy_range: tuple = None):
 
 
 if __name__ == '__main__':
-    filepath = "D:/pwr-code/gazebo_model/turtlebot3_world_model.sdf"
+    filepath = "/home/grzesiek/turtlebot3_ws/src/turtlebot3_simulations/turtlebot3_gazebo/models/turtlebot3_world/model.sdf"
     reader = SDFReader()
     reader.parse(filepath)
     obstacles, xy_range = reader.get_obstacles()
 
     map_width = 200
     map_height = 200
-    start_node = (random.randint(xy_range[0][0], xy_range[0][1]), random.randint(xy_range[1][0], xy_range[1][1]))
-    goal_node = (random.randint(xy_range[0][0], xy_range[0][1]), random.randint(xy_range[1][0], xy_range[1][1]))
+    start_node = (random.uniform(xy_range[0][0], xy_range[0][1]), random.uniform(xy_range[1][0], xy_range[1][1]))
+    goal_node = (random.uniform(xy_range[0][0], xy_range[0][1]), random.uniform(xy_range[1][0], xy_range[1][1]))
     # start_node = (180, 130)
     # goal_node = (60, 140)
     my_map = Map((map_width, map_height), start_node, goal_node, NODE_RADIUS)
